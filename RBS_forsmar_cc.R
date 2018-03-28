@@ -58,11 +58,11 @@ theme_d <- theme(axis.text = element_text(size = 12, color = "black"),
                  legend.text = element_text(size = 14, color = "black"))
 
 ## Plot of cleacutting day and bird survey date
-ggplot(forsmarsub, aes(birdday,clearcutday)) +
+ggplot(forsmarsub, aes(clearcutday, birdday)) +
   geom_point() +
   geom_smooth() +
   theme_classic() +
-  labs(x = "Date of RBS sighting", y = "Date of clearcutting") +
+  labs(x = "Date of clearcutting", y = "Date of RBS sighting") +
   theme_d
 
 
@@ -114,12 +114,12 @@ sd(forsmarsub2$Arealha)
 t.test(forsmark_clearcuts$Arealha,forsmarsub2$Arealha, var.equal=FALSE, paired=FALSE)
 
 ## mean clear cut age
-mean(forsmark_clearcuts$day)
+mean(forsmark_clearcuts$Avvdatum)
 median(forsmark_clearcuts$day)
 sd(forsmark_clearcuts$day)
 
 ## mean clear cut age for RBS
-mean(forsmarsub2$day)
+mean(forsmarsub2$Avvdatum)
 median(forsmarsub2$day)
 sd(forsmarsub2$day)
 
