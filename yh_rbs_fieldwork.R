@@ -11,6 +11,7 @@ install.packages("sparklyr")
 install.packages("reshape2")
 install.packages("Hmisc")
 install.packages("car")
+install.packages("MuMIn")
 library(lubridate)
 library(tibble)
 library(ggplot2)
@@ -21,6 +22,8 @@ library(reshape2)
 library(Hmisc)
 library(car)
 library(nlme)
+library(MuMIn)
+
 
 ############
 ## Set WD ##
@@ -41,9 +44,7 @@ obs <- read_delim("YH_RBS_observations.txt",
                                                    cuttingdate = col_date(format = "%d/%m/%Y"), 
                                                    date = col_date(format = "%d/%m/%Y"), 
                                                    grass = col_number(), 
-                                                   isolation = col_skip(), 
                                                    objectID = col_character(),
-                                                   openamount = col_skip(), 
                                                    raspberry = col_number(), 
                                                    shrikes = col_number(), 
                                                    shrubs = col_number(),
@@ -74,6 +75,17 @@ obs$heightcat <- cut(obs$vegheight,
                                      breaks = c(0,1,2,3,4,5,Inf),
                                      labels = c("0-1","1-2","2-3","3-4","4-5",">5"),
                                      right = FALSE)
+
+#obs$logarea <- log10(obs$areasize)
+#obs$logshrubs <- log10(obs$shrubs + 1)
+#obs$logbirch <- log10(obs$birch + 1)
+#obs$lograsp <- log10(obs$raspberry + 1)
+#obs$logbranch <- log10(obs$branches + 1)
+#obs$logbare <- log10(obs$bare + 1)
+#obs$logVH <- log10(obs$vegheight + 1)
+#obs$logdistfl10 <- log10(obs$distfl10ha)
+#obs$logdistcc <- log10(obs$distcc)
+#obs$logfl250 <- log10(obs$farmland_250 + 1)
 
 ###################
 ## Global labels ##
@@ -402,16 +414,18 @@ RBSccdateBar +
 #########################
 
 # select all numerical variables
-obs_numeric <- obs[,c(3,4,5,6,7,8,11,12,13,14,15,16,17,18,21,26)]
+obs_numeric <- obs[,c(3,4,5,6,7,8,11,12,13,14,15,16,17,18,21,26,27,28,29,30)]
 str(obs_numeric)
 obs_numeric$time <- as.numeric(obs_numeric$time)
 obs_numeric$date <- as.numeric(obs_numeric$date)
 obs_numeric$cuttingdate <- as.numeric(obs_numeric$cuttingdate)
+obs_numeric$farmland_250 <- as.numeric(obs_numeric$farmland_250)
+obs_numeric$clearcuts250 <- as.numeric((obs_numeric$clearcuts250))
 str(obs_numeric)
 
 #correlation matrix for all numeric variables
-cornumeric <- cor(obs_numeric, use = "everything", method = "spearman")
-write.csv(cornumeric, "correlation6.csv")
+cornumeric <- cor(obs_numeric, use = "complete.obs", method = "spearman")
+write.csv(cornumeric, "correlation8.csv")
 # correlation larger than .6
 # spruce x cuttingdate 
 # spruce x grass
@@ -450,6 +464,12 @@ cor.test(obs_numeric$spruce,
          method = "spearman",
          conf.level = 0.95)
 
+cor.test(obs_numeric$farmland_250, 
+         obs_numeric$distfl10ha, 
+         alternative = "less", 
+         method = "spearman",
+         conf.level = 0.95)
+
 # remove cuttingdate, grass and spruce to get rid of correlation problems
 obs_sel <- obs[,-c(8,11,12)]
 
@@ -463,8 +483,10 @@ cornumeric2 <- cor(obs_numeric2, use = "everything", method = "spearman")
 write.csv(cornumeric2, "correlation5.csv")
 
 # all good
+boxplot(obs[,c(11,12,13,14,15,16,17,18)])
 
 # check for normality
+#######
 # obs time Normal
 hist(obs_numeric2$time)
 # obs date Normal
@@ -499,6 +521,28 @@ hist(obs_numeric2$stones)
 hist(obs_numeric2$vegheight)
 # log10 vegheight Normal
 hist(log10(obs_numeric2$vegheight))
+# edges looks OK
+hist(obs_numeric$edges)
+# distfl10ha not normal
+hist(obs_numeric$distfl10ha)
+# log10 distfl10ha
+hist(log10(obs_numeric$distfl10ha))
+# distcc not ok
+hist(obs_numeric$distcc)
+# log10 distcc better
+hist(log10(obs_numeric$distcc))
+qplot(sample = obs_numeric$distcc)
+qplot(sample = log10(obs_numeric$distcc))
+# farmland250
+hist(obs_numeric$farmland_250)
+# log10 farmland250 is better
+hist(log10(obs_numeric$farmland_250))
+qplot(sample = obs_numeric$farmland_250)
+qplot(sample = log10(obs_numeric$farmland_250))
+# clearcuts250 is better than log transformed
+hist(obs_numeric$clearcuts250)
+qplot(sample = obs_numeric$clearcuts250)
+##########
 
 # transform variables:
 # areasize
@@ -508,101 +552,123 @@ hist(log10(obs_numeric2$vegheight))
 # branches
 # bare
 # vegheight
+# distfl10ha
+# distcc
+# farmland_250
 
-obs_sel$logarea <- log10(obs_sel$areasize)
-obs_sel$logshrubs <- log10(obs_sel$shrubs + 1)
-obs_sel$logbirch <- log10(obs_sel$birch + 1)
-obs_sel$lograsp <- log10(obs_sel$raspberry + 1)
-obs_sel$logbranch <- log10(obs_sel$branches + 1)
-obs_sel$logbare <- log10(obs_sel$bare + 1)
-obs_sel$logVH <- log10(obs_sel$vegheight + 1)
 
-str(obs_sel)
-obs_sel$yh_occ <- as.integer(obs_sel$yh_occ)
+obs$logarea <- log10(obs$areasize)
+obs$logshrubs <- log10(obs$shrubs + 1)
+obs$logbirch <- log10(obs$birch + 1)
+obs$lograsp <- log10(obs$raspberry + 1)
+obs$logbranch <- log10(obs$branches + 1)
+obs$logbare <- log10(obs$bare + 1)
+obs$logVH <- log10(obs$vegheight + 1)
+obs$logdistfl10 <- log10(obs$distfl10ha)
+obs$logdistcc <- log10(obs$distcc)
+obs$logfl250 <- log10(obs$farmland_250 + 1)
+
+
+str(obs)
+yhobs <- obs[,c(2,3,5,6,7,9,11,12,13,14,15,16,17,18,19,20,21,26,27,28,29,30)]
+
+# preparation for dredge
+# store variable names
+varnames <- c("areasize", "grass", "spruce", "shrubs","birch", "raspberry", "branches", "bare", "stones", "vegheight", "edges", "distfl10ha", "distcc", "farmland_250", "clearcuts250")
+varnames2 <- c(areasize, type_lvl1, grass, spruce, shrubs,birch, raspberry, branches, bare, stones, vegheight, edges, trees, stubs, distfl10ha, distcc, farmland_250, clearcuts250)
+str(yhobs[,varnames])
+yhobsnum <- yhobs[,varnames]
+yhobs$farmland_250 <- as.numeric(yhobs$farmland_250) 
+yhobs$clearcuts250 <- as.numeric(yhobs$clearcuts250) 
+
+### create correlation matrix for weather variables to use in dredge function, cutoff is 0.4, can be changed
+is.correlated <- function(i, j, data, conf.level = .95, cutoff = .4, ...) {
+  if(j >= i) return(NA)
+  ct <- cor.test(data[, i], data[, j], conf.level = conf.level, ...)
+  ct$p.value > (1 - conf.level) || abs(ct$estimate) <= cutoff
+}
+
+# Need vectorized function to use with 'outer'
+vCorrelated <- Vectorize(is.correlated, c("i", "j"))
+# Create logical matrix
+smat <- outer(1:length(varnames), 1:length(varnames), vCorrelated, data = yhobs[,varnames])
+nm <- varnames
+dimnames(smat) <- list(nm, nm)
+smat
+
+
 # Mixed effects model 
-baseYH <- lme(yh_occ ~ 1, 
-              random = ~1|spontaneous/date/time, 
-              data = obs_sel, 
-              method = "ML") 
+baseYH <- lmer(yellowhammers ~ 1 + (1|spontaneous) + (1|date), data = obs)
+baseRBS <- lmer(shrikes ~ 1 + (1|spontaneous) + (1|date), data = obs)
 
-areaYH <- update(baseYH, .~. + logarea)
-areaVHYH <- update(areaYH, .~. + logVH)
-areaVHYHE <- update(areaVHYH, .~. + edges)
-areaALL <- update(baseYH, .~. + 
-                    logarea + 
-                    logshrubs +
-                    logbirch + 
-                    lograsp +
-                    logbranch + 
-                    logbare + 
-                    stones + 
-                    logVH + 
-                    edges + 
-                    trees + 
-                    stubs)
-all2 <- update(baseYH, .~.+ 
-                  logarea + 
-                  logshrubs +
-                  logbirch + 
-                  lograsp +
-                  logbranch + 
+YHall <- update(baseYH, .~. + 
+                  areasize  +
+                  type_lvl1 +
+                  grass +
+                  spruce + 
+                  shrubs +
+                  birch + 
+                  raspberry +
+                  branches + 
+                  bare + 
                   stones + 
-                  logVH + 
+                  vegheight + 
                   edges + 
                   trees + 
-                  stubs)
+                  stubs +
+                  distfl10ha +
+                  distcc +
+                  farmland_250 +
+                  clearcuts250)
+summary(YHall)
+print(YHall, correlation = T)
+vif(YHall)
 
-all3 <- update(baseYH, .~.+ 
-                  logarea + 
-                  logshrubs +
-                  logbirch +
-                  logbranch + 
+RBSall <- update(baseRBS, .~. + 
+                  areasize  +
+                  type_lvl1 +
+                  grass +
+                  spruce + 
+                  shrubs +
+                  birch + 
+                  raspberry +
+                  branches + 
+                  bare + 
                   stones + 
-                  logVH + 
+                  vegheight + 
                   edges + 
                   trees + 
-                  stubs)
+                  stubs +
+                  distfl10ha +
+                  distcc +
+                  farmland_250 +
+                  clearcuts250)
+summary(RBSall)
 
-all4 <- update(baseYH, .~.+ 
-                 logarea + 
-                 logshrubs +
-                 logbirch +
-                 logbranch + 
-                 stones + 
-                 logVH + 
-                 edges + 
-                 trees)
+# clean out vars with >5 VIF value (type_lvl1, grass, spruce)
+YHall2 <- update(baseYH,
+                 .~. + 
+                   logarea + 
+                   logshrubs +
+                   logbirch + 
+                   lograsp +
+                   logbranch + 
+                   logbare + 
+                   stones + 
+                   logVH + 
+                   edges + 
+                   trees + 
+                   stubs +
+                   logdistfl10 +
+                   logdistcc +
+                   logfl250 +
+                   clearcuts250)
 
-all5 <- update(baseYH, .~.+ 
-                 logarea +
-                 logbirch +
-                 logbranch + 
-                 stones + 
-                 logVH + 
-                 edges + 
-                 trees)
-all6 <- update(baseYH, .~.+ 
-                 logarea +
-                 logbirch +
-                 logbranch + 
-                 stones + 
-                 logVH + 
-                 trees)
-all7 <- update(baseYH, .~.+ 
-                 logarea +
-                 logbirch + 
-                 stones + 
-                 logVH + 
-                 trees)
-all8 <- update(baseYH, .~.+ 
-                 logarea +
-                 stones + 
-                 logVH + 
-                 trees)
+summary(YHall2)
+vif(YHall2) # VIF is good now
+plot(YHall2)
+
+#dredge to select variables 
 
 
-allvarmodel <- lme(yh_occ ~ logarea + type_lvl1 + logshrubs + logbirch + lograsp + logbranch + logbare + stones + trees + stubs + logVH + edgeN + edgeE + edgeS + edgeW,
-                   random = ~1|spontaneous/date/time,
-                   data = obs_sel,
-                   method = "ML")
 
