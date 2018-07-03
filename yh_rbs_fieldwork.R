@@ -88,9 +88,8 @@ obs$heightcat <- cut(obs$vegheight,
 #obs$logfl250 <- log10(obs$farmland_250 + 1)
 
 ###################
-## Global labels ##
+## Global labels ## This is for making figures, you can skip this Paul
 ###################
-
 rbsy <- ylab(label = "Red-backed shrikes")
 yhy <- ylab(label = "Yellowhammers")
 cnty <- ylab(label = "Count")
@@ -101,190 +100,10 @@ areax <- xlab(label = "Area size ("~m^2~")")
 treex <- xlab(label = "Trees on site?")
 cdatex <- xlab(label = "Cutting date (year)")
 ######################
-## Data exploration ##
+## Data exploration ## Skip
 ######################
-
-##############
-# Scatterplots 
-##############
-
-# vegetationheight
-YHvegH <- ggplot(obs, 
-                 aes(vegheight,
-                     yellowhammers, shape = obs$spontaneous, colour = obs$spontaneous))
-YHvegH + 
-  geom_point() + 
-  theme_classic() +
-  geom_smooth(method = "lm") +
-  vhx +
-  yhy +
-  scale_shape_manual(name = "Observation type",
-                     values = c(16,17), 
-                     labels = c("planned", "spontaneous")) +
-  scale_color_manual(name = "Observation type",
-                     values = c("red", "blue"),
-                     labels = c("planned", "spontaneous"))
-
-RBSvegH <- ggplot(obs, 
-                  aes(vegheight,
-                      shrikes))
-RBSvegH + 
-  geom_point() + 
-  geom_smooth(method = "lm", 
-              colour = "red") +
-  theme_classic() +
-  vhx +
-  rbsy
-
-# cuttingdate
-YHccdate <- ggplot(obs, 
-                   aes(cuttingdate,
-                       yellowhammers))
-YHccdate + 
-  geom_point() + 
-  geom_smooth(method = "lm", 
-              colour = "red") +
-  theme_classic() +
-  cutdx +
-  yhy
-
-RBSccdate <- ggplot(obs, 
-                    aes(cuttingdate,
-                        shrikes))
-RBSccdate + 
-  geom_point() + 
-  geom_smooth(method = "lm", 
-              colour = "red")+
-  theme_classic() +
-  cutdx +
-  rbsy
-
-# observation time
-YHtime <- ggplot(obs, 
-                 aes(time,
-                     yellowhammers))
-YHtime + 
-  geom_point() + 
-  geom_smooth(method = "lm", 
-              colour = "red") +
-  yhy +
-  timx
-  
-
-RBStime <- ggplot(obs, 
-                  aes(time,
-                      shrikes))
-RBStime + 
-  geom_point() + 
-  geom_smooth(method = "lm", 
-              colour = "red") +
-  rbsy +
-  timx
-
-# area size
-YHareas <- ggplot(obs, 
-                  aes(areasize,
-                      yellowhammers))
-YHareas + 
-  geom_point() + 
-  geom_smooth(method = "lm", 
-              colour = "red") +
-  yhy +
-  areax
-
-RBSareas <- ggplot(obs, 
-                   aes(areasize,
-                       shrikes))
-RBSareas + 
-  geom_point() + 
-  geom_smooth(method = "lm", 
-              colour = "red") +
-  rbsy +
-  areax
-
-# spruce
-YHspruce <- ggplot(obs, 
-                   aes(spruce,
-                       yellowhammers))
-YHspruce + 
-  geom_point() + 
-  geom_smooth(method = "lm", 
-              colour = "red")
-RBSspruce <- ggplot(obs, 
-                    aes(spruce,
-                        shrikes))
-RBSspruce + 
-  geom_point() + 
-  geom_smooth(method = "lm", 
-              colour = "red")
-
-# birch
-YHbirch <- ggplot(obs, 
-                  aes(birch,
-                      yellowhammers))
-YHbirch + 
-  geom_point() + 
-  geom_smooth(method = "lm", 
-              colour = "red")
-RBSbirch <- ggplot(obs, 
-                   aes(birch,
-                       shrikes))
-RBSbirch +
-  geom_point() + 
-  geom_smooth(method = "lm",
-              colour = "red")
-
-# grass
-YHgrass <- ggplot(obs, 
-                  aes(grass,
-                      yellowhammers))
-YHgrass + 
-  geom_point() + 
-  geom_smooth(method = "lm", 
-              colour = "red")
-RBSgrass <- ggplot(obs, 
-                   aes(grass,
-                       shrikes))
-RBSgrass + 
-  geom_point() + 
-  geom_smooth(method = "lm", 
-              colour = "red")
-
-# raspberry
-YHraspberry <- ggplot(obs, 
-                      aes(raspberry,
-                          yellowhammers))
-YHraspberry + 
-  geom_point() + 
-  geom_smooth(method = "lm", 
-              colour = "red")
-
-RBSraspberry <- ggplot(obs, 
-                       aes(raspberry,
-                           shrikes))
-RBSraspberry + 
-  geom_point() + 
-  geom_smooth(method = "lm", 
-              colour = "red")
-
-# stones
-YHstones <- ggplot(obs, 
-                   aes(stones,
-                       yellowhammers))
-YHstones + 
-  geom_point() + 
-  geom_smooth(method = "lm", 
-              colour = "red")
-
-RBSstones <- ggplot(obs, 
-                    aes(stones,
-                        shrikes))
-RBSstones + 
-  geom_point() + 
-  geom_smooth(method = "lm", 
-              colour = "red")
 ##########
-# Barplots 
+# Barplots # Skip 
 ##########
 
 # trees
@@ -409,7 +228,7 @@ RBSccdateBar +
   theme_classic() 
 
 #########################
-## Predictor selection ##
+## Predictor selection ## Here it's relevant for you again Paul!
 ## Assumptions         ##
 #########################
 
@@ -544,7 +363,7 @@ hist(obs_numeric$clearcuts250)
 qplot(sample = obs_numeric$clearcuts250)
 ##########
 
-# transform variables:
+# non normal variables:
 # areasize
 # shrubs
 # birch
@@ -556,28 +375,26 @@ qplot(sample = obs_numeric$clearcuts250)
 # distcc
 # farmland_250
 
-
-obs$logarea <- log10(obs$areasize)
-obs$logshrubs <- log10(obs$shrubs + 1)
-obs$logbirch <- log10(obs$birch + 1)
-obs$lograsp <- log10(obs$raspberry + 1)
-obs$logbranch <- log10(obs$branches + 1)
-obs$logbare <- log10(obs$bare + 1)
-obs$logVH <- log10(obs$vegheight + 1)
-obs$logdistfl10 <- log10(obs$distfl10ha)
-obs$logdistcc <- log10(obs$distcc)
-obs$logfl250 <- log10(obs$farmland_250 + 1)
-
-
+# check structure of obs dataframe
 str(obs)
+
+# select only the variables that will be used in the Yellowhammer model
 yhobs <- obs[,c(2,3,5,6,7,9,11,12,13,14,15,16,17,18,19,20,21,26,27,28,29,30)]
 
 # preparation for dredge
 # store variable names
+# numerical variables for colinnearity analysis
 varnames <- c("areasize", "grass", "spruce", "shrubs","birch", "raspberry", "branches", "bare", "stones", "vegheight", "edges", "distfl10ha", "distcc", "farmland_250", "clearcuts250")
-varnames2 <- c(areasize, type_lvl1, grass, spruce, shrubs,birch, raspberry, branches, bare, stones, vegheight, edges, trees, stubs, distfl10ha, distcc, farmland_250, clearcuts250)
+# all variables for the model
+varnames2 <- c("areasize", "type_lvl1", "grass", "spruce", "shrubs", "birch", "raspberry", "branches", "bare", "stones", "vegheight", "edges", "trees", "stubs", "distfl10ha", "distcc", "farmland_250", "clearcuts250")
+
+# check structure of the numerical variables of yhobs
 str(yhobs[,varnames])
-yhobsnum <- yhobs[,varnames]
+
+# make separate data.frame with only numeric vars
+# yhobsnum <- yhobs[,varnames]
+
+# farmland_250 ad clearcuts250 are 'int' and should be 'num'
 yhobs$farmland_250 <- as.numeric(yhobs$farmland_250) 
 yhobs$clearcuts250 <- as.numeric(yhobs$clearcuts250) 
 
@@ -592,11 +409,12 @@ is.correlated <- function(i, j, data, conf.level = .95, cutoff = .4, ...) {
 vCorrelated <- Vectorize(is.correlated, c("i", "j"))
 # Create logical matrix
 smat <- outer(1:length(varnames), 1:length(varnames), vCorrelated, data = yhobs[,varnames])
+
 nm <- varnames
 dimnames(smat) <- list(nm, nm)
 smat
 
-
+# these are the base models I made with all the predictor variables.
 # Mixed effects model 
 baseYH <- lmer(yellowhammers ~ 1 + (1|spontaneous) + (1|date), data = obs)
 baseRBS <- lmer(shrikes ~ 1 + (1|spontaneous) + (1|date), data = obs)
