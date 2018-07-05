@@ -23,7 +23,8 @@ library(Hmisc)
 library(car)
 library(nlme)
 library(MuMIn)
-
+library(parallel)
+detectCores()
 
 ############
 ## Set WD ##
@@ -88,7 +89,7 @@ obs$heightcat <- cut(obs$vegheight,
 #obs$logfl250 <- log10(obs$farmland_250 + 1)
 
 ###################
-## Global labels ## This is for making figures, you can skip this Paul
+## Global labels ## 
 ###################
 rbsy <- ylab(label = "Red-backed shrikes")
 yhy <- ylab(label = "Yellowhammers")
@@ -100,10 +101,10 @@ areax <- xlab(label = "Area size ("~m^2~")")
 treex <- xlab(label = "Trees on site?")
 cdatex <- xlab(label = "Cutting date (year)")
 ######################
-## Data exploration ## Skip
+## Data exploration ## 
 ######################
 ##########
-# Barplots # Skip 
+# Barplots # 
 ##########
 
 # trees
@@ -228,7 +229,7 @@ RBSccdateBar +
   theme_classic() 
 
 #########################
-## Predictor selection ## Here it's relevant for you again Paul!
+## Predictor selection ##
 ## Assumptions         ##
 #########################
 
@@ -377,116 +378,162 @@ qplot(sample = obs_numeric$clearcuts250)
 
 # check structure of obs dataframe
 str(obs)
+obs$farmland_250 <- as.numeric(obs$farmland_250) 
+obs$clearcuts250 <- as.numeric(obs$clearcuts250)
+obs$type1_num <- as.numeric(factor(obs$type_lvl1)) 
 
 # select only the variables that will be used in the Yellowhammer model
-yhobs <- obs[,c(2,3,5,6,7,9,11,12,13,14,15,16,17,18,19,20,21,26,27,28,29,30)]
+yhobs <- obs[,c(2,3,5,6,7,9,11,12,13,14,15,16,17,18,19,20,21,26,27,28,29,30,34)]
+# select only the variables that will be used in the Red-backed shrike model
+rbsobs <- obs[,c(2,4,5,6,7,9,11,12,13,14,15,16,17,18,19,20,21,26,27,28,29,30,34)]
 
 # preparation for dredge
 # store variable names
 # numerical variables for colinnearity analysis
-varnames <- c("areasize", "grass", "spruce", "shrubs","birch", "raspberry", "branches", "bare", "stones", "vegheight", "edges", "distfl10ha", "distcc", "farmland_250", "clearcuts250")
+varnames <- c("areasize", "type1_num", "grass", "spruce", "shrubs","birch", "raspberry", "branches", "bare", "vegheight", "edges", "distfl10ha", "distcc", "farmland_250", "clearcuts250")
 # all variables for the model
-varnames2 <- c("areasize", "type_lvl1", "grass", "spruce", "shrubs", "birch", "raspberry", "branches", "bare", "stones", "vegheight", "edges", "trees", "stubs", "distfl10ha", "distcc", "farmland_250", "clearcuts250")
+varnames2 <- c("areasize", "type_lvl1", "grass", "spruce", "shrubs", "birch", "raspberry", "branches", "bare", "vegheight", "edges", "trees", "stubs", "distfl10ha", "distcc", "farmland_250", "clearcuts250")
 
-# check structure of the numerical variables of yhobs
+# check structure of the numerical variables of yhobs and rbsobs
 str(yhobs[,varnames])
+str(rbsobs[,varnames])
 
-# make separate data.frame with only numeric vars
-# yhobsnum <- yhobs[,varnames]
+# variable selection for rescaling
+rescalevars <- c("areasize","vegheight", "edges", "distfl10ha", "distcc", "farmland_250", "clearcuts250")
+covervars <- c("grass", "spruce", "shrubs", "birch", "raspberry", "branches", "bare", "stones")
 
-# farmland_250 ad clearcuts250 are 'int' and should be 'num'
-yhobs$farmland_250 <- as.numeric(yhobs$farmland_250) 
-yhobs$clearcuts250 <- as.numeric(yhobs$clearcuts250) 
+# create copies for rescaling
+yhobs_rscl <- yhobs
+rbsobs_rscl <- rbsobs
+
+# rescale cover variables to 1
+yhobs_rscl[,covervars] <- yhobs_rscl[,covervars]/100
+rbsobs_rscl[,covervars] <- rbsobs_rscl[,covervars]/100
+# rescale other numerical variables to 1
+yhobs_rscl[,rescalevars] <- apply(yhobs_rscl[,rescalevars],2,function(col) col/max(col))
+rbsobs_rscl[,rescalevars] <- apply(rbsobs_rscl[,rescalevars],2,function(col) col/max(col))
+
+yhobs_rscl <- as.data.frame(yhobs_rscl)
+rbsobs_rscl <- as.data.frame(rbsobs_rscl)
 
 ### create correlation matrix for weather variables to use in dredge function, cutoff is 0.4, can be changed
 is.correlated <- function(i, j, data, conf.level = .95, cutoff = .4, ...) {
   if(j >= i) return(NA)
-  ct <- cor.test(data[, i], data[, j], conf.level = conf.level, ...)
+  ct <- cor.test(data[,i], data[,j], conf.level = conf.level, ...)
   ct$p.value > (1 - conf.level) || abs(ct$estimate) <= cutoff
 }
 
 # Need vectorized function to use with 'outer'
 vCorrelated <- Vectorize(is.correlated, c("i", "j"))
-# Create logical matrix
-smat <- outer(1:length(varnames), 1:length(varnames), vCorrelated, data = yhobs[,varnames])
 
+# Create logical matrix for yellowhammers
+smat_rscl <- outer(1:length(varnames), 1:length(varnames), vCorrelated, data = yhobs_rscl[,varnames])
 nm <- varnames
-dimnames(smat) <- list(nm, nm)
-smat
+dimnames(smat_rscl) <- list(nm, nm)
+smat_rscl
 
-# these are the base models I made with all the predictor variables.
+## on with the dredging
+## create subsetting rules
+subred <- smat_rscl
+i <- as.vector(subred == FALSE & !is.na(subred))
+sexpr <-parse(text = paste("!(", paste("(",
+                                       varnames[col(subred)[i]], " && ",
+                                       varnames[row(subred)[i]], ")",
+                                       sep = "", collapse = " || "), ")"))
+
+# replace numerical type1 variable with factorial
+sexpr <- gsub("type1_num","type_lvl1",sexpr)
+sexpr1 <- parse(text = paste("!((grass && spruce) || (grass && birch) || (grass && vegheight) || (grass && farmland_250) || (spruce && vegheight) || (edges && clearcuts250) || (distfl10ha && farmland_250) || (distcc && clearcuts250))"))
+
+# prepare cluster for parallel running
+clusterType <- if(length(find.package("snow", quiet = TRUE))) "SOCK" else "PSOCK"
+clust <- try(makeCluster(getOption("cl.cores", 28), type = clusterType))
+
+########################
+
+### YELLOWHAMMERS ###
+form.full<-formula(paste0('yellowhammers ~ 1 + (1|spontaneous) + (1|date) +',paste0(varnames2,collapse='+'))) # can add random effects in the first part of the expression
+# if df.sp is your data frame with response and predictors
+options(na.action = na.fail)
+m0.YH<-lmer(form.full, data=yhobs_rscl)
+
+## export to cluster
+clusterExport(clust,list("yhobs_rscl","sexpr1","m0.YH"))
+
+## dredge
+ms.YH<-pdredge(m0.YH,subset=sexpr1,cluster=clust)
+
+mod.YH.av<-model.avg(subset(ms.YH, delta<quantile(ms.YH$delta,0.05)),fit=TRUE)
+
+bm.YH<-get.models(ms.YH,delta==0)[[1]]
+YHsummary <- summary(bm.YH)
+capture.output(YHsummary,file = "bmYHoutput.txt")
+
+########################
+
+### RED-BACKED SHRIKES ###
+form.full<-formula(paste0('shrikes ~ 1 + (1|spontaneous) + (1|date) +',paste0(varnames2,collapse='+'))) # can add random effects in the first part of the expression
+# if df.sp is your data frame with response and predictors
+options(na.action = na.fail)
+m0.RBS<-lmer(form.full, data=rbsobs_rscl)
+
+## dredge
+ms.RBS<-dredge(m0.RBS,subset=sexpr1)
+
+mod.RBS.av<-model.avg(subset(ms.RBS, delta<quantile(ms.RBS$delta,0.05)),fit=TRUE)
+
+bm.RBS<-get.models(ms.RBS,delta==0)[[1]]
+RBSsummary <- summary(bm.RBS)
+capture.output(RBSsummary, file = "bmRBSoutput.txt")
+
+########################
+
+# plots of bird ~ predictor var
+plot(yellowhammers ~ areasize, data=yhobs)
+plot(yellowhammers ~ distfl10ha, data=yhobs)
+plot(yellowhammers ~ spruce, data=yhobs)
+
+plot(shrikes ~ areasize, data=rbsobs)
+plot(shrikes ~ birch, data=rbsobs)
+plot(shrikes ~ branches, data=rbsobs)
+plot(shrikes ~ distcc, data=rbsobs)
+plot(shrikes ~ farmland_250, data=rbsobs)
+
+# the null models
 # Mixed effects model 
-baseYH <- lmer(yellowhammers ~ 1 + (1|spontaneous) + (1|date), data = obs)
-baseRBS <- lmer(shrikes ~ 1 + (1|spontaneous) + (1|date), data = obs)
+baseYH <- lmer(yellowhammers ~ 1 + (1|spontaneous) + (1|date), data = yhobs_rscl)
+baseRBS <- lmer(shrikes ~ 1 + (1|spontaneous) + (1|date), data = rbsobs_rscl)
 
-YHall <- update(baseYH, .~. + 
-                  areasize  +
-                  type_lvl1 +
-                  grass +
-                  spruce + 
-                  shrubs +
-                  birch + 
-                  raspberry +
-                  branches + 
-                  bare + 
-                  stones + 
-                  vegheight + 
-                  edges + 
-                  trees + 
-                  stubs +
-                  distfl10ha +
-                  distcc +
-                  farmland_250 +
-                  clearcuts250)
-summary(YHall)
-print(YHall, correlation = T)
-vif(YHall)
+# Are the best models significantly better than the null model?
+anova(baseYH,bm.YH)
+anova(baseRBS,bm.RBS)
 
-RBSall <- update(baseRBS, .~. + 
-                  areasize  +
-                  type_lvl1 +
-                  grass +
-                  spruce + 
-                  shrubs +
-                  birch + 
-                  raspberry +
-                  branches + 
-                  bare + 
-                  stones + 
-                  vegheight + 
-                  edges + 
-                  trees + 
-                  stubs +
-                  distfl10ha +
-                  distcc +
-                  farmland_250 +
-                  clearcuts250)
-summary(RBSall)
+# are the YH predictor vars significantly contributing to predictions?
+bm.YH_area <- lmer(yellowhammers ~ distfl10ha + spruce + (1 | spontaneous) +  (1 | date), data = yhobs_rscl)
+bm.YH_distfl <- lmer(yellowhammers ~ areasize + spruce + (1 | spontaneous) +  (1 | date), data = yhobs_rscl)
+bm.YH_spruce <- lmer(yellowhammers ~ areasize + distfl10ha + (1 | spontaneous) +  (1 | date), data = yhobs_rscl)
 
-# clean out vars with >5 VIF value (type_lvl1, grass, spruce)
-YHall2 <- update(baseYH,
-                 .~. + 
-                   logarea + 
-                   logshrubs +
-                   logbirch + 
-                   lograsp +
-                   logbranch + 
-                   logbare + 
-                   stones + 
-                   logVH + 
-                   edges + 
-                   trees + 
-                   stubs +
-                   logdistfl10 +
-                   logdistcc +
-                   logfl250 +
-                   clearcuts250)
+# all vars contribute significantly
+anova(bm.YH, bm.YH_area)
+anova(bm.YH, bm.YH_distfl)
+anova(bm.YH, bm.YH_spruce)
 
-summary(YHall2)
-vif(YHall2) # VIF is good now
-plot(YHall2)
+# are the RBS predictor vars significantly contributing to predictions?
+bm.RBS_area <- lmer(formula = shrikes ~ birch + branches + distcc + 
+                      farmland_250 + (1 | spontaneous) + (1 | date), data = rbsobs_rscl)
+bm.RBS_birch <- lmer(formula = shrikes ~ areasize + branches + distcc + 
+                    farmland_250 + (1 | spontaneous) + (1 | date), data = rbsobs_rscl)
+bm.RBS_branches <- lmer(formula = shrikes ~ areasize + birch + distcc + 
+                         farmland_250 + (1 | spontaneous) + (1 | date), data = rbsobs_rscl)
+bm.RBS_distcc <- lmer(formula = shrikes ~ areasize + birch + branches + 
+                       farmland_250 + (1 | spontaneous) + (1 | date), data = rbsobs_rscl)
+bm.RBS_fl250 <- lmer(formula = shrikes ~ areasize + birch + branches + distcc + 
+                      (1 | spontaneous) + (1 | date), data = rbsobs_rscl)
 
-#dredge to select variables 
-
-
+# all vars contribute significantly
+anova(bm.RBS, bm.RBS_area)
+anova(bm.RBS, bm.RBS_birch)
+anova(bm.RBS, bm.RBS_branches)
+anova(bm.RBS, bm.RBS_distcc)
+anova(bm.RBS, bm.RBS_fl250)
 

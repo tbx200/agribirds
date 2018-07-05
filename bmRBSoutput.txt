@@ -1,0 +1,33 @@
+Linear mixed model fit by REML ['lmerMod']
+Formula: shrikes ~ areasize + birch + branches + distcc + farmland_250 +      (1 | spontaneous) + (1 | date)
+   Data: rbsobs_rscl
+
+REML criterion at convergence: 238.9
+
+Scaled residuals: 
+    Min      1Q  Median      3Q     Max 
+-1.3110 -0.5015 -0.2006  0.0782  4.8981 
+
+Random effects:
+ Groups      Name        Variance Std.Dev.
+ date        (Intercept) 0.0000   0.0000  
+ spontaneous (Intercept) 0.0000   0.0000  
+ Residual                0.2444   0.4943  
+Number of obs: 164, groups:  date, 18; spontaneous, 2
+
+Fixed effects:
+             Estimate Std. Error t value	Chisq	df	p value
+(Intercept)  -0.12148    0.08903  -1.364
+areasize      0.46769    0.22103   2.116	4.5827	1	0.0323 *
+birch         0.64848    0.21827   2.971	8.9148	1	0.002829 **
+branches      1.44039    0.33200   4.339	18.459	1 	1.736e-05 ***
+distcc       -0.42786    0.20787  -2.058	4.3394	1	0.03724 *
+farmland_250  0.52589    0.19901   2.643	7.0927	1	0.00774 **
+
+Correlation of Fixed Effects:
+            (Intr) areasz birch  brnchs distcc
+areasize    -0.543                            
+birch       -0.472 -0.033                     
+branches    -0.270  0.014  0.149              
+distcc      -0.354  0.348 -0.225 -0.109       
+farmlnd_250 -0.251 -0.372  0.309  0.152 -0.317

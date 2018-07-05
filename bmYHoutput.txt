@@ -1,0 +1,29 @@
+Linear mixed model fit by REML ['lmerMod']
+Formula: yellowhammers ~ areasize + distfl10ha + spruce + (1 | spontaneous) +      (1 | date)
+   Data: yhobs_rscl
+
+REML criterion at convergence: 371.8
+
+Scaled residuals: 
+    Min      1Q  Median      3Q     Max 
+-2.1565 -0.6324 -0.3075  0.4761  4.0817 
+
+Random effects:
+ Groups      Name        Variance Std.Dev.
+ date        (Intercept) 0.00000  0.0000  
+ spontaneous (Intercept) 0.03114  0.1765  
+ Residual                0.55222  0.7431  
+Number of obs: 164, groups:  date, 18; spontaneous, 2
+
+Fixed effects:
+            Estimate Std. Error t value	Chisq	df	p value
+(Intercept)   0.1936     0.1707   1.134	
+areasize      1.4863     0.2948   5.042	24.533	1	7.304e-07 ***
+distfl10ha   -0.5943     0.2980  -1.994	4.3081	1	0.03793 *
+spruce        1.0974     0.2166   5.066	24.209	1	8.641e-07 ***
+
+Correlation of Fixed Effects:
+           (Intr) areasz dstf10
+areasize   -0.425              
+distfl10ha -0.177  0.011       
+spruce     -0.318  0.033 -0.147
