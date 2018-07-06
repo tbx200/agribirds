@@ -23,8 +23,7 @@ library(Hmisc)
 library(car)
 library(nlme)
 library(MuMIn)
-library(parallel)
-detectCores()
+library(dplyr)
 
 ############
 ## Set WD ##
@@ -77,6 +76,8 @@ obs$heightcat <- cut(obs$vegheight,
                                      labels = c("0-1","1-2","2-3","3-4","4-5",">5"),
                                      right = FALSE)
 
+
+
 #obs$logarea <- log10(obs$areasize)
 #obs$logshrubs <- log10(obs$shrubs + 1)
 #obs$logbirch <- log10(obs$birch + 1)
@@ -100,134 +101,6 @@ timx <- xlab(label = "Time (HH:MM:SS)")
 areax <- xlab(label = "Area size ("~m^2~")")
 treex <- xlab(label = "Trees on site?")
 cdatex <- xlab(label = "Cutting date (year)")
-######################
-## Data exploration ## 
-######################
-##########
-# Barplots # 
-##########
-
-# trees
-YHtrees <- ggplot(obs, 
-                  aes(trees, 
-                      fill = yh_occ))
-YHtrees + 
-  geom_bar(position = "dodge") +
-  theme_classic() +
-  treex +
-  cnty +
-  guides(fill = FALSE)
-
-RBStrees <- ggplot(obs, 
-                   aes(trees,
-                       fill = rbs_occ))
-RBStrees + 
-  geom_bar(position = "dodge") +
-  theme_classic() +
-  treex +
-  cnty +
-  guides(fill = FALSE)
-
-# vegetation height
-vhYH.dcast <- dcast(obs, yh_occ ~ heightcat, fun.aggregate = length)
-vhYH.melt = melt(vhYH.dcast, id.vars = "yh_occ", measure.vars = c("0-1", "1-2","2-3","3-4","4-5",">5"))
-
-YHvegHBar <- ggplot(vhYH.melt, 
-                    aes(x = variable, 
-                        y = value, 
-                        fill = yh_occ))
-
-YHvegHBar + 
-  geom_bar(position = "dodge", 
-           stat = "identity")+
-  vhx +
-  cnty +
-  theme_classic() +
-  guides(fill = FALSE)
-
-vhRBS.dcast <- dcast(obs, rbs_occ ~ heightcat, fun.aggregate = length)
-vhRBS.melt = melt(vhRBS.dcast, id.vars = "rbs_occ", measure.vars = c("0-1", "1-2","2-3","3-4","4-5",">5"))
-  
-RBSvegHBar <- ggplot(vhRBS.melt, 
-                     aes(x = variable, 
-                         y = value, 
-                         fill = rbs_occ))
-RBSvegHBar + 
-  geom_bar(position = "dodge",
-           stat = "identity") +
-  theme_classic() +
-  vhx +
-  cnty +
-  guides(fill = FALSE)
-
-# observation time
-YHtimeBar <- ggplot(obs, 
-                    aes(time, 
-                        fill = yh_occ))
-YHtimeBar + 
-  geom_histogram(position = "dodge",
-                 binwidth = 2400) +
-  theme_classic() +
-  timx +
-  cnty +
-  guides(fill = FALSE)
-
-RBStimeBar <- ggplot(obs, 
-                     aes(time,
-                         fill = rbs_occ))
-RBStimeBar + 
-  geom_histogram(position = "dodge", 
-           binwidth = 2400) +
-  theme_classic() +
-  timx +
-  cnty +
-  guides(fill = FALSE)
-
-# areasize
-YHareasizeBar <- ggplot(obs, 
-                        aes(areasize, 
-                            fill = yh_occ))
-YHareasizeBar + 
-  geom_bar(position = "dodge", 
-                         binwidth = 15000) +
-  areax +
-  cnty +
-  theme_classic() +
-  guides(fill = FALSE)
-
-RBSareasizeBar <- ggplot(obs, 
-                         aes(areasize,
-                             fill = rbs_occ))
-RBSareasizeBar + 
-  geom_bar(position = "dodge", 
-                          binwidth = 15000) +
-  areax +
-  cnty +
-  theme_classic() +
-  guides(fill = FALSE)
-
-# cuttingdate
-YHccdateBar <- ggplot(obs, 
-                      aes(cuttingdate, 
-                          fill = yh_occ))
-YHccdateBar + 
-  geom_bar(position = "dodge", 
-           binwidth = 500) +
-  cdatex +
-  cnty +
-  theme_classic() +
-  guides(fill = FALSE)
-
-RBSccdateBar <- ggplot(obs,
-                       aes(cuttingdate,
-                           fill = rbs_occ))
-RBSccdateBar + 
-  geom_bar(position = "dodge", 
-           binwidth = 500) +
-  cdatex +
-  cnty +
-  theme_classic() 
-
 #########################
 ## Predictor selection ##
 ## Assumptions         ##
@@ -442,12 +315,8 @@ sexpr <-parse(text = paste("!(", paste("(",
                                        sep = "", collapse = " || "), ")"))
 
 # replace numerical type1 variable with factorial
-sexpr <- gsub("type1_num","type_lvl1",sexpr)
 sexpr1 <- parse(text = paste("!((grass && spruce) || (grass && birch) || (grass && vegheight) || (grass && farmland_250) || (spruce && vegheight) || (edges && clearcuts250) || (distfl10ha && farmland_250) || (distcc && clearcuts250))"))
-
-# prepare cluster for parallel running
-clusterType <- if(length(find.package("snow", quiet = TRUE))) "SOCK" else "PSOCK"
-clust <- try(makeCluster(getOption("cl.cores", 28), type = clusterType))
+sexpr2 <-  parse(text = paste("!( (type_lvl1 && grass) || (type_lvl1 && spruce) || (type_lvl1 && birch) || (type_lvl1 && farmland_250) || (grass && spruce) || (grass && birch) || (grass && vegheight) || (grass && farmland_250) || (spruce && vegheight) || (edges && clearcuts250) || (distfl10ha && farmland_250) || (distcc && clearcuts250) )"))
 
 ########################
 
@@ -457,17 +326,14 @@ form.full<-formula(paste0('yellowhammers ~ 1 + (1|spontaneous) + (1|date) +',pas
 options(na.action = na.fail)
 m0.YH<-lmer(form.full, data=yhobs_rscl)
 
-## export to cluster
-clusterExport(clust,list("yhobs_rscl","sexpr1","m0.YH"))
-
 ## dredge
-ms.YH<-pdredge(m0.YH,subset=sexpr1,cluster=clust)
+ms.YH<-dredge(m0.YH,subset=sexpr2)
 
 mod.YH.av<-model.avg(subset(ms.YH, delta<quantile(ms.YH$delta,0.05)),fit=TRUE)
 
 bm.YH<-get.models(ms.YH,delta==0)[[1]]
 YHsummary <- summary(bm.YH)
-capture.output(YHsummary,file = "bmYHoutput.txt")
+YHcapture.output(YHsummary,file = "bmYHoutput.txt")
 
 ########################
 
@@ -478,7 +344,7 @@ options(na.action = na.fail)
 m0.RBS<-lmer(form.full, data=rbsobs_rscl)
 
 ## dredge
-ms.RBS<-dredge(m0.RBS,subset=sexpr1)
+ms.RBS<-dredge(m0.RBS,subset=sexpr2)
 
 mod.RBS.av<-model.avg(subset(ms.RBS, delta<quantile(ms.RBS$delta,0.05)),fit=TRUE)
 
