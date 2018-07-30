@@ -1,33 +1,37 @@
-Linear mixed model fit by REML ['lmerMod']
-Formula: shrikes ~ areasize + birch + branches + distcc + farmland_250 +      (1 | spontaneous) + (1 | date)
+Generalized linear mixed model fit by maximum likelihood (Laplace Approximation) [glmerMod]
+ Family: poisson  ( log )
+Formula: shrikes ~ areasize + birch + branches + distcc + farmland_250 +  
+    (1 | spontaneous) + (1 | date)
    Data: rbsobs_rscl
 
-REML criterion at convergence: 238.9
+     AIC      BIC   logLik deviance df.resid 
+   159.8    184.6    -71.9    143.8      156 
 
 Scaled residuals: 
     Min      1Q  Median      3Q     Max 
--1.3110 -0.5015 -0.2006  0.0782  4.8981 
+-0.9571 -0.3855 -0.2750 -0.1932  5.9582 
 
 Random effects:
  Groups      Name        Variance Std.Dev.
- date        (Intercept) 0.0000   0.0000  
- spontaneous (Intercept) 0.0000   0.0000  
- Residual                0.2444   0.4943  
+ date        (Intercept) 0        0       
+ spontaneous (Intercept) 0        0       
 Number of obs: 164, groups:  date, 18; spontaneous, 2
 
 Fixed effects:
-             Estimate Std. Error t value	Chisq	df	p value
-(Intercept)  -0.12148    0.08903  -1.364
-areasize      0.46769    0.22103   2.116	4.5827	1	0.0323 *
-birch         0.64848    0.21827   2.971	8.9148	1	0.002829 **
-branches      1.44039    0.33200   4.339	18.459	1 	1.736e-05 ***
-distcc       -0.42786    0.20787  -2.058	4.3394	1	0.03724 *
-farmland_250  0.52589    0.19901   2.643	7.0927	1	0.00774 **
+             Estimate Std. Error z value Pr(>|z|)    
+(Intercept)   -3.4790     0.5474  -6.355 2.08e-10 ***
+areasize       1.7585     0.8626   2.039 0.041481 *  
+birch          3.4571     0.9172   3.769 0.000164 ***
+branches       4.5123     0.8989   5.020 5.18e-07 ***
+distcc        -2.6355     1.3787  -1.912 0.055932 .  
+farmland_250   2.6225     0.8321   3.152 0.001624 ** 
+---
+Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1
 
 Correlation of Fixed Effects:
             (Intr) areasz birch  brnchs distcc
-areasize    -0.543                            
-birch       -0.472 -0.033                     
-branches    -0.270  0.014  0.149              
-distcc      -0.354  0.348 -0.225 -0.109       
-farmlnd_250 -0.251 -0.372  0.309  0.152 -0.317
+areasize    -0.504                            
+birch       -0.646 -0.004                     
+branches    -0.617  0.130  0.481              
+distcc      -0.288  0.336 -0.103  0.021       
+farmlnd_250 -0.377 -0.401  0.466  0.340 -0.304
