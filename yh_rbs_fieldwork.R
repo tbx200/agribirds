@@ -3,7 +3,7 @@
 ##############
 install.packages(c("ggplot2", "tidyverse", "tibble", "lubridate", 
                    "lme4", "sparklyr", "reshape2", "Hmisc", "car", 
-                   "MuMIn", "glmmTMB"))
+                   "MuMIn", "glmmTMB", "matrixStats"))
 library(lubridate)
 library(tibble)
 library(ggplot2)
@@ -17,6 +17,7 @@ library(nlme)
 library(MuMIn)
 library(dplyr)
 library(glmmTMB)
+library(matrixStats)
 ############
 ## Set WD ##
 ############
@@ -80,6 +81,24 @@ timx <- xlab(label = "Time (HH:MM:SS)")
 areax <- xlab(label = "Area size ("~m^2~")")
 treex <- xlab(label = "Trees on site?")
 cdatex <- xlab(label = "Cutting date (year)")
+
+# Lists of variables
+varlist <- c("areasize", "edges", "spruce", "grass", "shrubs", "birch", "raspberry", 
+             "branches", "bare", "stones", "trees", "stubs", "vegheight", "distfl10ha",
+             "distcc", "farmland_250", "clearcuts250")
+varlist2 <- c("areasize", "edges", "spruce", "grass", "shrubs", "birch", "raspberry", 
+              "branches", "bare", "stones", "vegheight", "distfl10ha",
+              "distcc", "farmland_250", "clearcuts250")
+# numerical variables for colinnearity analysis
+varnames <- c("areasize", "grass", "spruce", "shrubs","birch", "raspberry", "branches", "bare", 
+              "vegheight", "edges", "distfl10ha", "distcc", "farmland_250", "clearcuts250")
+# all variables for the model
+varnames2 <- c("areasize", "grass", "spruce", "shrubs", "birch", "raspberry", "branches", "bare", 
+               "vegheight", "edges", "trees", "stubs", "distfl10ha", "distcc", "farmland_250", "clearcuts250")
+rescalevars <- c("areasize","vegheight", "edges", "distfl10ha", "distcc", "farmland_250", "clearcuts250")
+covervars <- c("grass", "spruce", "shrubs", "birch", "raspberry", "branches", "bare", "stones")
+varnames3 <- c("areasize", "grass", "spruce", "shrubs", "birch", "raspberry", "branches", "bare", 
+               "vegheight", "edges", "distfl10ha", "distcc", "farmland_250", "clearcuts250")
 #########################
 ## Predictor selection ##
 ## Assumptions         ##
@@ -116,29 +135,90 @@ boxplot(obs[,29:30])
 str(obs)
 obs$farmland_250 <- as.numeric(obs$farmland_250) 
 obs$clearcuts250 <- as.numeric(obs$clearcuts250)
-obs$type1_num <- as.numeric(factor(obs$type_lvl1)) 
+obs$type1_num <- as.numeric(factor(obs$type_lvl1))
+obs$year <- year(obs$cuttingdate)
+
+# subset to exclude spontaneous observations
+obs <- obs[which(obs$spontaneous=="0"),]
 
 # select only the variables that will be used in the Yellowhammer model
-yhobs <- obs[,c(2,3,5,6,7,9,11,12,13,14,15,16,17,18,19,20,21,26,27,28,29,30,34)]
+yhobs <- obs[,c(2,3,5,6,7,8,9,11,12,13,14,15,16,17,18,19,20,21,26,27,28,29,30,31,34,35)]
 # select only the variables that will be used in the Red-backed shrike model
-rbsobs <- obs[,c(2,4,5,6,7,9,11,12,13,14,15,16,17,18,19,20,21,26,27,28,29,30,34)]
+rbsobs <- obs[,c(2,4,5,6,7,8,9,11,12,13,14,15,16,17,18,19,20,21,26,27,28,29,30,32,34,35)]
+
+yhobs_f <- yhobs[which(yhobs$type_lvl1 == "forest"),]
+YH_fp <- yhobs_f[which(yhobs_f$yh_occ=="1"),]
+YH_fa <-  yhobs_f[which(yhobs_f$yh_occ=="0"),]
+yhobs_a <- yhobs[which(yhobs$type_lvl1 == "agriculture"),]
+YH_ap <- yhobs_a[which(yhobs_a$yh_occ=="1"),]
+YH_aa <-  yhobs_a[which(yhobs_a$yh_occ=="0"),]
+rbsobs_f <- rbsobs[which(rbsobs$type_lvl1 == "forest"),]
+RBS_fp <- rbsobs_f[which(rbsobs_f$rbs_occ=="1"),]
+RBS_fa <-  rbsobs_f[which(rbsobs_f$rbs_occ=="0"),]
+rbsobs_a <- rbsobs[which(rbsobs$type_lvl1 == "agriculture"),]
+RBS_ap <- rbsobs_a[which(rbsobs_a$rbs_occ=="1"),]
+RBS_aa <-  rbsobs_a[which(rbsobs_a$rbs_occ=="0"),]
+
+simplenumbers <- NULL
+simplenumbers_yfp <- data.frame(colMeans(YH_fp[,varlist2]))
+simplenumbers_yfa <- data.frame(colMeans(YH_fa[,varlist2]))
+simplenumbers_yap <- data.frame(colMeans(YH_ap[,varlist2]))
+simplenumbers_yaa <- data.frame(colMeans(YH_aa[,varlist2]))
+
+simplenumbers_rfp <- data.frame(colMeans(RBS_fp[,varlist2]))
+simplenumbers_rfa <- data.frame(colMeans(RBS_fa[,varlist2]))
+simplenumbers_rap <- data.frame(colMeans(RBS_ap[,varlist2]))
+simplenumbers_raa <- data.frame(colMeans(RBS_aa[,varlist2]))
+
+simplenumbers_yfp$sd <- colSds(as.matrix(YH_fp[,varlist2]))
+simplenumbers_yfa$sd <- colSds(as.matrix(YH_fa[,varlist2]))
+simplenumbers_yap$sd <- colSds(as.matrix(YH_ap[,varlist2]))
+simplenumbers_yaa$sd <- colSds(as.matrix(YH_aa[,varlist2]))
+
+simplenumbers_rfp$sd <- colSds(as.matrix(RBS_fp[,varlist2]))
+simplenumbers_rfa$sd <- colSds(as.matrix(RBS_fa[,varlist2]))
+simplenumbers_rap$sd <- colSds(as.matrix(RBS_ap[,varlist2]))
+simplenumbers_raa$sd <- colSds(as.matrix(RBS_aa[,varlist2]))
+
+
+
+
+count(RBS_ap[which(RBS_ap$trees=="yes"),])/length(RBS_ap$trees)
+count(RBS_aa[which(RBS_aa$trees=="yes"),])/length(RBS_aa$trees)
+count(RBS_fp[which(RBS_fp$trees=="yes"),])/length(RBS_fp$trees)
+count(RBS_fa[which(RBS_fa$trees=="yes"),])/length(RBS_fa$trees)
+
+count(YH_ap[which(YH_ap$trees=="yes"),])/length(YH_ap$trees)
+count(YH_aa[which(YH_aa$trees=="yes"),])/length(YH_aa$trees)
+count(YH_fp[which(YH_fp$trees=="yes"),])/length(YH_fp$trees)
+count(YH_fa[which(YH_fa$trees=="yes"),])/length(YH_fa$trees)
+
+count(RBS_ap[which(RBS_ap$stubs=="yes"),])/length(RBS_ap$stubs)
+count(RBS_aa[which(RBS_aa$stubs=="yes"),])/length(RBS_aa$stubs)
+count(RBS_fp[which(RBS_fp$stubs=="yes"),])/length(RBS_fp$stubs)
+count(RBS_fa[which(RBS_fa$stubs=="yes"),])/length(RBS_fa$stubs)
+
+count(YH_ap[which(YH_ap$stubs=="yes"),])/length(YH_ap$stubs)
+count(YH_aa[which(YH_aa$stubs=="yes"),])/length(YH_aa$stubs)
+count(YH_fp[which(YH_fp$stubs=="yes"),])/length(YH_fp$stubs)
+count(YH_fa[which(YH_fa$stubs=="yes"),])/length(YH_fa$stubs)
+
+for(i in 1:17){
+  variable <- varlist[i]
+  mean <- mean(yhobs_f[,variable]) 
+  sd <- sd()
+  simplenumbers <- rbind(simplenumbers, data.frame(variable, mean, sd))
+}
 
 # preparation for dredge
 # store variable names
-# numerical variables for colinnearity analysis
-varnames <- c("areasize", "grass", "spruce", "shrubs","birch", "raspberry", "branches", "bare", 
-              "vegheight", "edges", "distfl10ha", "distcc", "farmland_250", "clearcuts250")
-# all variables for the model
-varnames2 <- c("areasize", "grass", "spruce", "shrubs", "birch", "raspberry", "branches", "bare", 
-               "vegheight", "edges", "trees", "stubs", "distfl10ha", "distcc", "farmland_250", "clearcuts250")
+
 
 # check structure of the numerical variables of yhobs and rbsobs
 str(yhobs[,varnames])
 str(rbsobs[,varnames])
 
 # variable selection for rescaling
-rescalevars <- c("areasize","vegheight", "edges", "distfl10ha", "distcc", "farmland_250", "clearcuts250")
-covervars <- c("grass", "spruce", "shrubs", "birch", "raspberry", "branches", "bare", "stones")
 
 # create copies for rescaling
 yhobs_rscl <- yhobs
@@ -155,7 +235,7 @@ yhobs_rscl <- as.data.frame(yhobs_rscl)
 rbsobs_rscl <- as.data.frame(rbsobs_rscl)
 
 ##### Check differences between farmland and forest
-varnames3 <- c("areasize", "grass", "spruce", "shrubs", "birch", "raspberry", "branches", "bare", "vegheight", "edges", "distfl10ha", "distcc", "farmland_250", "clearcuts250")
+
 par(mfrow = c(3,5))
 for(i in varnames3){
   boxplot(yhobs_rscl[,i]~yhobs_rscl$type_lvl1, ylab = i)
@@ -223,9 +303,6 @@ sexpr2 <-  parse(text = paste("!( (type_lvl1 && grass) || (type_lvl1 && spruce) 
 ### SINGLE PREDICTOR glmmTMB ZI ###
 ###################################
 ## make lists of specific predictor variables
-varlist <- c("areasize", "edges", "spruce", "grass", "shrubs", "birch", "raspberry", 
-             "branches", "bare", "stones", "trees", "stubs", "vegheight", "distfl10ha",
-             "distcc", "farmland_250", "clearcuts250")
 
 
 ### YELLOWHAMMERS FOREST ###
