@@ -3,9 +3,11 @@
 ##############
 install.packages(c("ggplot2", "tidyverse", "tibble", "lubridate", 
                    "lme4", "sparklyr", "reshape2", "Hmisc", "car", 
-                   "MuMIn", "glmmTMB", "matrixStats", "hexbin"))
+                   "MuMIn", "glmmTMB", "matrixStats", "hexbin", "DHARMa",
+                   "sandwich"))
 library(lubridate)
 library(tibble)
+library(boot)
 library(ggplot2)
 library(readr)
 library(lme4)
@@ -22,6 +24,9 @@ library(RColorBrewer)
 library(purrr)
 library(tidyr)
 library(hexbin)
+library(DHARMa)
+library(vcdExtra)
+library(sandwich)
 ############
 ## Set WD ##
 ############
@@ -82,32 +87,40 @@ obs$heightcat <- cut(obs$vegheight,
 #vhx <- xlab(label = "Vegetation height (m)")
 #cutdx <- xlab(label = "Cutting date")
 #timx <- xlab(label = "Time (HH:MM:SS)")
-#areax <- xlab(label = "Area size ("~m^2~")")
+areax <- xlab(label = "Clear-cut size (ha)")
 #treex <- xlab(label = "Trees on site?")
 #cdatex <- xlab(label = "Cutting date (year)")
 
 # Lists of variables
 varlist <- c("areasize", "edges", "spruce", "grass", "shrubs", "birch", "raspberry", 
              "branches", "bare", "stones", "trees", "stubs", "vegheight", "distfl10ha",
-             "distcc", "farmland_250", "clearcuts250")
+             "distcc", "propfl_250", "propcc_250")
 varlist2 <- c("areasize", "edges", "spruce", "grass", "shrubs", "birch", "raspberry", 
               "branches", "bare", "stones", "vegheight", "distfl10ha",
-              "distcc", "farmland_250", "clearcuts250")
+              "distcc", "propfl_250", "propcc_250")
 varlist3 <- c("yellowhammers","areasize", "edges", "spruce", "grass", "shrubs", "birch", "raspberry", 
               "branches", "bare", "stones", "vegheight", "distfl10ha",
-              "distcc", "farmland_250", "clearcuts250")
+              "distcc","propfl_250", "propcc_250")
 
 varlist4 <- c("shrikes","areasize", "edges", "spruce", "grass", "shrubs", "birch", "raspberry", 
               "branches", "bare", "stones", "vegheight", "distfl10ha",
-              "distcc", "farmland_250", "clearcuts250")
+              "distcc", "propfl_250", "propcc_250")
 
 # numerical variables for colinnearity analysis
 varnames <- c("areasize", "grass", "spruce", "shrubs","birch", "raspberry", "branches", "bare", 
-              "vegheight", "edges", "distfl10ha", "distcc", "farmland_250", "clearcuts250")
+              "vegheight", "edges", "distfl10ha", "distcc", "propfl_250", "propcc_250")
+varnames.s <- c("areasize", "grass", "spruce", "shrubs","birch", "raspberry", "branches", "bare", 
+                "stones", "vegheight", "edges", "distfl10ha", "distcc", "propfl_250", "propcc_250")
 # all variables for the model
-varnames2 <- c("areasize", "grass", "spruce", "shrubs", "birch", "raspberry", "branches", "bare", 
-               "vegheight", "edges", "trees", "stubs", "distfl10ha", "distcc", "farmland_250", "clearcuts250")
-rescalevars <- c("areasize","vegheight", "edges", "distfl10ha", "distcc", "farmland_250", "clearcuts250")
+varnames.f <- c("areasize", "grass", "spruce", "shrubs", "birch", "raspberry", "branches", "bare", 
+               "vegheight", "edges", "trees", "stubs", "distfl10ha", "distcc", "propfl_250", "propcc_250",
+               "areasize*propfl_250", "areasize*propcc_250", "areasize*distcc", "areasize*distfl10ha", 
+               "areasize*vegheight")
+varnames.a <- c("areasize", "grass", "spruce", "shrubs", "birch", "raspberry", "branches", "bare", 
+               "vegheight", "edges", "trees", "distfl10ha", "distcc", "propfl_250", "propcc_250",
+               "areasize*propfl_250", "areasize*propcc_250", "areasize*distcc", "areasize*distfl10ha", 
+               "areasize*vegheight")
+rescalevars <- c("areasize","vegheight", "edges", "distfl10ha", "distcc")
 covervars <- c("grass", "spruce", "shrubs", "birch", "raspberry", "branches", "bare", "stones")
 
 #########################
@@ -140,8 +153,6 @@ boxplot(obs[,29:30])
 # distcc
 # farmland_250
 
-
-
 # check structure of obs dataframe
 str(obs)
 obs$farmland_250 <- as.numeric(obs$farmland_250) 
@@ -153,9 +164,11 @@ obs$year <- year(obs$cuttingdate)
 # obs <- obs[which(obs$spontaneous=="0"),]
 
 # select only the variables that will be used in the Yellowhammer model
-yhobs <- obs[,c(1,2,3,5,6,7,8,9,11,12,13,14,15,16,17,18,19,20,21,26,27,28,29,30,31,34,35)]
+yhobs <- obs[,c(1,2,3,5,6,7,8,9,11,12,13,14,15,16,17,18,19,20,21,26,27,28,31,32,33,36,37)]
+yhobs$yh_dens <- ((yhobs$yellowhammers / yhobs$areasize) * 10000)
 # select only the variables that will be used in the Red-backed shrike model
-rbsobs <- obs[,c(1,2,4,5,6,7,8,9,11,12,13,14,15,16,17,18,19,20,21,26,27,28,29,30,32,34,35)]
+rbsobs <- obs[,c(1,2,4,5,6,7,8,9,11,12,13,14,15,16,17,18,19,20,21,26,27,28,31,32,34,36,37)]
+rbsobs$rbs_dens <- ((rbsobs$shrikes / rbsobs$areasize) * 10000)
 
 yhobs_f <- yhobs[which(yhobs$type_lvl1 == "forest"),]
 YH_fp <- yhobs_f[which(yhobs_f$yh_occ=="1"),]
@@ -271,6 +284,14 @@ yh_rscl_f <- yhobs_rscl[which(yhobs_rscl$type_lvl1 == "forest"),]
 rbs_rscl_a <- rbsobs_rscl[which(rbsobs_rscl$type_lvl1 == "agriculture"),]
 rbs_rscl_f <- rbsobs_rscl[which(rbsobs_rscl$type_lvl1 == "forest"),]
 
+## checking for zero inflation
+
+zero.test(yh_rscl_f$yellowhammers)
+zero.test(rbs_rscl_f$shrikes)
+zero.test(yh_rscl_a$yellowhammers)
+zero.test(rbs_rscl_a$shrikes)
+
+
 ### SUBSETTING BASED ON CORRELATION ###
 #######################################
 ### create correlation matrix for weather variables to use in dredge function, cutoff is 0.4, can be changed
@@ -288,7 +309,6 @@ nm <- varnames
 dimnames(smat_rscl_a) <- list(nm, nm)
 smat_rscl_a
 
-## on with the dredging
 ## create subsetting rules FOR AGRICULTURE
 subred_a <- smat_rscl_a
 i <- as.vector(subred_a == FALSE & !is.na(subred_a))
@@ -303,7 +323,6 @@ nm <- varnames
 dimnames(smat_rscl_f) <- list(nm, nm)
 smat_rscl_f
 
-## on with the dredging
 ## create subsetting rules FOR FOREST
 subred_f <- smat_rscl_f
 i <- as.vector(subred_f == FALSE & !is.na(subred_f))
@@ -322,7 +341,7 @@ sexpr_f <-parse(text = paste("!(", paste("(",
 
 ### dredge Occurrence  ###
 ### for zero inflation ###
-form.full.YHoc.f<-formula(paste0('yh_occ ~ 1 +',paste0(varnames2,collapse='+'))) # can add random effects in the first part of the expression
+form.full.YHoc.f<-formula(paste0('yh_occ ~ 1 +',paste0(varnames.f,collapse='+'))) # can add random effects in the first part of the expression
 # if df.sp is your data frame with response and predictors
 options(na.action = na.fail)
 
@@ -335,12 +354,12 @@ mod.YHoc.f.av<-model.avg(subset(ms.YHoc.f, delta<quantile(ms.YHoc.f$delta,0.05))
 
 bm.YHoc.f<-get.models(ms.YHoc.f,delta==0)[[1]]
 YHocsummary.f <- summary(bm.YHoc.f)
-capture.output(YHocsummary.f,file = "bmYHoc_f_output.txt")
+capture.output(YHocsummary.f,file = "bmYHoc_f_output.csv")
 
 ### dredge abundance   ###
 ### for conditional fm ###
 
-form.full.YHab.f<-formula(paste0('yellowhammers ~ 1 +',paste0(varnames2,collapse='+'))) # can add random effects in the first part of the expression
+form.full.YHab.f<-formula(paste0('yellowhammers ~ 1 +',paste0(varnames.f,collapse='+'))) # can add random effects in the first part of the expression
 # if df.sp is your data frame with response and predictors
 options(na.action = na.fail)
 
@@ -349,41 +368,78 @@ m0.YHab.f<-glm(form.full.YHab.f, data=yh_rscl_f, family = poisson())
 ## dredge
 ms.YHab.f<-dredge(m0.YHab.f,subset=sexpr_f)
 
+
 mod.YHab.f.av<-model.avg(subset(ms.YHab.f, delta<quantile(ms.YHab.f$delta,0.05)),fit=TRUE)
 
 bm.YHab.f<-get.models(ms.YHab.f,delta==0)[[1]]
-YHabsummary.f <- summary(bm.YHab.f)
+summary(bm.YHab.f)
 capture.output(YHabsummary.f,file = "bmYHab_f_output.txt")
 
-### glmmTMB for full model ###
 
-YHf.zi <- glmmTMB(yellowhammers ~ farmland_250 + areasize + spruce, 
+### glmmTMB for full model ###
+# with landscape proportions
+YHf.zinull <- glmmTMB(yellowhammers ~ areasize + bare + propfl_250 + spruce + areasize:propfl_250, 
+                      family = poisson(),
+                      data = yh_rscl_f,
+                      ziformula = ~ areasize + propfl_250 + spruce + areasize:propfl_250,
+                      dispformula = ~ .)
+
+
+#ms.YHzi.f <- dredge(YHf.zinull, trace = 1)
+#bm.YHzi.f<-get.models(ms.YHzi.f,delta==0)[[1]]
+
+YHf.simOutput <- simulateResiduals(fittedModel = YHf.zinull, n = 250)
+testUniformity(simulationOutput = YHf.simOutput)
+testDispersion(simulationOutput = YHf.simOutput)
+testZeroInflation(simulationOutput = YHf.simOutput)
+
+
+YHf.glm.noint <- glm(yellowhammers ~ propfl_250 + areasize + spruce + bare, 
+               family = poisson(),
+               data = yh_rscl_f)
+YHf.glm <- glm(yellowhammers ~ propfl_250 * areasize + spruce + bare, 
+               family = poisson(),
+               data = yh_rscl_f)
+
+YHf.glm.qp <- glm(yellowhammers ~ propfl_250 * areasize + spruce + bare, 
+               family = quasipoisson(),
+               data = yh_rscl_f)
+YHf.glmer <- glmer(yellowhammers ~ propfl_250 * areasize + spruce + bare + (1|spontaneous), 
+               family = poisson(),
+               data = yh_rscl_f)
+
+YHf.zi.01 <- glmmTMB(yellowhammers ~ areasize + propfl_250 + 
+                    spruce + areasize:propfl_250, 
                   family = poisson(),
                   data = yh_rscl_f,
-                  ziformula = ~ areasize + spruce,
+                  ziformula = ~ spruce,
                   dispformula = ~ spontaneous)
-fixef(YHf.zi)$disp
-YHf.zi1 <- glmmTMB(yellowhammers ~ farmland_250 + areasize + spruce, 
-                  family = poisson(),
-                  data = yh_rscl_f,
-                  ziformula = ~ areasize + spruce + farmland_250,
-                  dispformula = ~ spontaneous)
-YHf.zi2 <- glmmTMB(yellowhammers ~ farmland_250 + areasize + spruce, 
-                   family = poisson(),
-                   data = yh_rscl_f,
-                   ziformula = ~ spruce,
-                   dispformula = ~ spontaneous)
-YHf.zi3 <- glmmTMB(yellowhammers ~ farmland_250 + areasize, 
-                   family = poisson(),
-                   data = yh_rscl_f,
-                   ziformula = ~ areasize + spruce,
-                   dispformula = ~ spontaneous)
-YHf.zi4 <- glmmTMB(yellowhammers ~ farmland_250 + spruce, 
-                   family = poisson(),
-                   data = yh_rscl_f,
-                   ziformula = ~ areasize + spruce,
-                   dispformula = ~ spontaneous)
+
+# best
+YHf.zi.02 <- glmmTMB(yellowhammers ~ propfl_250 * areasize + spruce, 
+                     family = poisson(),
+                     data = yh_rscl_f,
+                     ziformula = ~ .,
+                     dispformula = ~ spontaneous)
+YHf.glm.02 <- glm(yellowhammers ~ propfl_250 * areasize + spruce, 
+               family = poisson(),
+               data = yh_rscl_f)
+# without interaction in zi
+YHf.zi.03 <- glmmTMB(yellowhammers ~ propfl_250 * areasize + spruce, 
+                     family = poisson(),
+                     data = yh_rscl_f,
+                     ziformula = ~ areasize + spruce,
+                     dispformula = ~ spontaneous)
+
+YHf.spr.glm <- glm(yellowhammers ~ spruce, data = yh_rscl_f, family = 'poisson')
+YHf.are.glm <- glm(yellowhammers ~ areasize, data = yh_rscl_f, family = 'poisson')
+YHf.pfl.glm <- glm(yellowhammers ~ propfl_250, data = yh_rscl_f, family = 'poisson')
+summary(YHf.spr.glm)
+summary(YHf.are.glm)
+summary(YHf.pfl.glm)
+
 # YHf.zi is the best model
+
 
 #########################
 ### Yellowhammer agri ###
@@ -391,7 +447,7 @@ YHf.zi4 <- glmmTMB(yellowhammers ~ farmland_250 + spruce,
 
 ### dredge Occurrence  ###
 ### for zero inflation ###
-form.full.YHoc.a <- formula(paste0('yh_occ ~ 1 +',paste0(varnames2,collapse='+'))) # can add random effects in the first part of the expression
+form.full.YHoc.a <- formula(paste0('yh_occ ~ 1 +',paste0(varnames.a,collapse='+'))) # can add random effects in the first part of the expression
 # if df.sp is your data frame with response and predictors
 options(na.action = na.fail)
 
@@ -409,7 +465,7 @@ capture.output(YHocsummary.a,file = "bmYHoc_a_output.txt")
 ### dredge abundance   ###
 ### for conditional fm ###
 
-form.full.YHab.a<-formula(paste0('yellowhammers ~ 1 +',paste0(varnames2,collapse='+'))) # can add random effects in the first part of the expression
+form.full.YHab.a<-formula(paste0('yellowhammers ~ 1 +',paste0(varnames.a,collapse='+'))) # can add random effects in the first part of the expression
 # if df.sp is your data frame with response and predictors
 options(na.action = na.fail)
 
@@ -424,14 +480,35 @@ bm.YHab.a<-get.models(ms.YHab.a,delta==0)[[1]]
 YHabsummary.a <- summary(bm.YHab.a)
 capture.output(YHabsummary.a,file = "bmYHab_a_output.txt")
 
+cov.bm.YHa <- vcovHC(bm.YHab.a, type="HC0")
+std.err.YHa <- sqrt(diag(cov.bm.YHa))
+r.est.YH <- cbind(Estimate= coef(bm.YHab.a), "Robust SE" = std.err.YHa,
+                   "Pr(>|z|)" = 2 * pnorm(abs(coef(bm.YHab.a)/std.err.YHa), lower.tail=FALSE),
+                   LL = coef(bm.YHab.a) - 1.96 * std.err.YHa,
+                   UL = coef(bm.YHab.a) + 1.96 * std.err.YHa)
+
+r.est.YH
+
+
 ### glmmTMB for full model ###
-YHa.zi <- glmmTMB(yellowhammers ~ areasize, 
+YHa.zi <- glmmTMB(form.full.YHab.a, 
                   family = poisson(),
                   data = yh_rscl_a,
-                  ziformula = ~ stubs,
+                  ziformula = ~ .,
                   dispformula = ~1)
 # model doesn't fit, need to look at this later..
 
+data.pres <- subset(yh_rscl_a, yellowhammers > 0)
+data.abs <- subset(yh_rscl_a, yellowhammers == 0)
+data.abs <- data.abs[sample(1:nrow(data.abs),nrow(data.pres)),]
+balancedata <- rbind(data.pres,data.abs)
+
+bal.mod <- glmmTMB(yellowhammers ~ areasize + vegheight, 
+                   family = poisson(),
+                   data = balancedata,
+                   ziformula = ~ .,
+                   dispformula = ~ spontaneous)
+bal.glm <- glm(yellowhammers ~ areasize , data = balancedata, family = poisson())
 
 ##################
 ### RBS forest ###
@@ -439,7 +516,7 @@ YHa.zi <- glmmTMB(yellowhammers ~ areasize,
 
 ### dredge Occurrence  ###
 ### for zero inflation ###
-form.full.RBSoc.f<-formula(paste0('rbs_occ ~ 1 +',paste0(varnames2,collapse='+'))) # can add random effects in the first part of the expression
+form.full.RBSoc.f<-formula(paste0('rbs_occ ~ 1 +',paste0(varnames.f,collapse='+'))) # can add random effects in the first part of the expression
 # if df.sp is your data frame with response and predictors
 options(na.action = na.fail)
 
@@ -457,7 +534,7 @@ capture.output(RBSocsummary.f,file = "bmRBSoc_f_output.txt")
 ### dredge abundance   ###
 ### for conditional fm ###
 
-form.full.RBSab.f<-formula(paste0('shrikes ~ 1 +',paste0(varnames2,collapse='+'))) # can add random effects in the first part of the expression
+form.full.RBSab.f<-formula(paste0('shrikes ~ 1 +',paste0(varnames.f,collapse='+'))) # can add random effects in the first part of the expression
 # if df.sp is your data frame with response and predictors
 options(na.action = na.fail)
 
@@ -473,11 +550,33 @@ RBSabsummary.f <- summary(bm.RBSab.f)
 capture.output(RBSabsummary.f,file = "bmRBSab_f_output.txt")
 
 ### glmmTMB for full model ###
-RBSf.zi <- glmmTMB(shrikes ~ branches + areasize + birch, 
+RBSf.zinull <- glmmTMB(shrikes ~ areasize + bare + birch + branches + propfl_250 + raspberry, 
+                       family = poisson(),
+                       data = rbs_rscl_f,
+                       ziformula = ~ areasize + branches + propcc_250 + propfl_250 + shrubs + stubs + areasize:propfl_250,
+                       dispformula = ~ spontaneous)
+
+RBSf.zi <- glmmTMB(shrikes ~ bare + birch + branches + raspberry, 
                    family = poisson(),
                    data = rbs_rscl_f,
-                   ziformula = ~ branches + farmland_250,
-                   dispformula = ~ spontaneous)
+                   ziformula = ~ areasize + branches,
+                   dispformula = ~ .)
+
+RBSf.zi2 <- glmmTMB(shrikes ~ bare + birch + branches + raspberry, 
+                       family = poisson(),
+                       data = rbs_rscl_f,
+                       ziformula = ~ branches + areasize,
+                       dispformula = ~ spontaneous)
+
+RBSf.glm <- glm(shrikes ~ branches + birch + propfl_250 + bare, 
+                family = poisson(),
+                data = rbs_rscl_f)
+
+RBSf.simOutput <- simulateResiduals(fittedModel = RBSf.zi, n = 250)
+testUniformity(simulationOutput = RBSf.simOutput)
+testDispersion(simulationOutput = RBSf.simOutput)
+testZeroInflation(simulationOutput = RBSf.simOutput)
+
 
 ################
 ### RBS agri ###
@@ -485,7 +584,7 @@ RBSf.zi <- glmmTMB(shrikes ~ branches + areasize + birch,
 
 ### dredge Occurrence  ###
 ### for zero inflation ###
-form.full.RBSoc.a <- formula(paste0('rbs_occ ~ 1 +',paste0(varnames2,collapse='+'))) # can add random effects in the first part of the expression
+form.full.RBSoc.a <- formula(paste0('rbs_occ ~ 1 +',paste0(varnames.a,collapse='+'))) # can add random effects in the first part of the expression
 # if df.sp is your data frame with response and predictors
 options(na.action = na.fail)
 
@@ -503,7 +602,7 @@ capture.output(RBSocsummary.a,file = "bmRBSoc_a_output.txt")
 ### dredge abundance   ###
 ### for conditional fm ###
 
-form.full.RBSab.a<-formula(paste0('shrikes ~ 1 +',paste0(varnames2,collapse='+'))) # can add random effects in the first part of the expression
+form.full.RBSab.a<-formula(paste0('shrikes ~ 1 +',paste0(varnames.a,collapse='+'))) # can add random effects in the first part of the expression
 # if df.sp is your data frame with response and predictors
 options(na.action = na.fail)
 
@@ -518,6 +617,15 @@ bm.RBSab.a<-get.models(ms.RBSab.a,delta==0)[[1]]
 RBSabsummary.a <- summary(bm.RBSab.a)
 capture.output(RBSabsummary.a,file = "bmRBSab_a_output.txt")
 
+cov.bm.RBSa <- vcovHC(bm.RBSab.a, type="HC0")
+std.err.RBSa <- sqrt(diag(cov.bm.RBSa))
+r.est.RBS <- cbind(Estimate= coef(bm.RBSab.a), "Robust SE" = std.err.RBSa,
+               "Pr(>|z|)" = 2 * pnorm(abs(coef(bm.RBSab.a)/std.err.RBSa), lower.tail=FALSE),
+               LL = coef(bm.RBSab.a) - 1.96 * std.err.RBSa,
+               UL = coef(bm.RBSab.a) + 1.96 * std.err.RBSa)
+
+r.est.RBS
+
 ### glmmTMB for full model ###
 RBSa.zi <- glmmTMB(shrikes ~ farmland_250 + spruce + birch, 
                    family = poisson(),
@@ -525,6 +633,550 @@ RBSa.zi <- glmmTMB(shrikes ~ farmland_250 + spruce + birch,
                    ziformula = ~ spruce,
                    dispformula = ~ spontaneous)
 
+yellowhammers <- as.data.frame(table(yh_rscl_f$yellowhammers))
 
+ggplot(data = yellowhammers, aes(x = Var1, y = Freq)) +
+  geom_bar(stat = 'identity', fill = 'black') +
+  theme_classic() +
+  xlab('Number of Yellowhammers') +
+  ylab('Number of locations') +
+  theme(axis.title = element_text(size = 25),
+        axis.text = element_text(size = 20, coslor = 'black'))
+
+shrikes <- as.data.frame(table(rbs_rscl_f$shrikes))
+
+ggplot(data = shrikes, aes(x = Var1, y = Freq)) +
+  geom_bar(stat = 'identity', fill = 'black') +
+  theme_classic() +
+  xlab('Number of Red-backed Shrikes') +
+  ylab('Number of locations') +
+  theme(axis.title = element_text(size = 25),
+        axis.text = element_text(size = 20, color = 'black'))
+
+wilcoxtests <- data.frame
+
+for(i in varnames.s){
+  print(i)
+  print(wilcox.test(yhobs_f[[i]]~yhobs_f$yh_occ, exact=T))
+  print(mean(yhobs_f[which(yhobs_f$yh_occ=="1"),][[i]]))
+  print(sd(yhobs_f[which(yhobs_f$yh_occ=="1"),][[i]]))
+  print(mean(yhobs_f[which(yhobs_f$yh_occ=="0"),][[i]]))
+  print(sd(yhobs_f[which(yhobs_f$yh_occ=="0"),][[i]]))
+}
+
+for(i in varnames.s){
+  print(i)
+  print(wilcox.test(rbsobs_f[[i]]~rbsobs_f$rbs_occ, exact=T))
+  print(mean(rbsobs_f[which(rbsobs_f$rbs_occ=="1"),][[i]]))
+  print(sd(rbsobs_f[which(rbsobs_f$rbs_occ=="1"),][[i]]))
+  print(mean(rbsobs_f[which(rbsobs_f$rbs_occ=="0"),][[i]]))
+  print(sd(rbsobs_f[which(rbsobs_f$rbs_occ=="0"),][[i]]))
+}
+
+for(i in varnames.s){
+  print(i)
+  print(wilcox.test(yhobs_a[[i]]~yhobs_a$yh_occ, exact=T))
+  print(mean(yhobs_a[which(yhobs_a$yh_occ=="1"),][[i]]))
+  print(sd(yhobs_a[which(yhobs_a$yh_occ=="1"),][[i]]))
+  print(mean(yhobs_a[which(yhobs_a$yh_occ=="0"),][[i]]))
+  print(sd(yhobs_a[which(yhobs_a$yh_occ=="0"),][[i]]))
+}
+
+plot(yh_dens ~ areasize, data = yhobs_f)
+plot(yellowhammers ~ areasize, data = yhobs_f)
+summary(lm(yh_dens ~ areasize, data = yhobs_f))
+plot(rbs_dens ~ areasize, data = rbsobs_f)
+plot(shrikes ~ areasize, data = rbsobs_f)
+summary(lm(rbs_dens~ areasize, data = rbsobs_f))
+
+rbsobs_f$rbs_occ <- as.factor(rbsobs_f$rbs_occ)
+yhobs_f$yh_occ <- as.factor(yhobs_f$yh_occ)
+yhobs_f$areaha <- yhobs_f$areasize/10000
+rbsobs_f$areaha <- rbsobs_f$areasize/10000
+
+rbsobs_a$rbs_occ <- as.factor(rbsobs_a$rbs_occ)
+yhobs_a$yh_occ <- as.factor(yhobs_a$yh_occ)
+yhobs_a$areaha <- yhobs_a$areasize/10000
+rbsobs_a$areaha <- rbsobs_a$areasize/10000
+
+yhdens <- list(theme_classic(),
+  ylab('Number of clear-cuts'),
+  scale_x_continuous(expand = c(0,0)),
+  scale_y_continuous(expand = c(0,0)),
+  scale_fill_manual(values = c("white", "#FFD966")),
+  scale_color_manual(values = c("black", "black")),
+  theme(legend.position="none",axis.title = element_text(size = 10),
+        axis.text = element_text(size = 10, color = 'black'),
+        plot.margin = margin(0.5, 0.5, 0.5, 0.5, "cm")))
+
+rbsdens <- list(theme_classic(),
+               ylab('Number of clear-cuts'),
+               scale_x_continuous(expand = c(0,0)),
+               scale_y_continuous(expand = c(0,0)),
+               scale_fill_manual(values = c("white", "#C00000")),
+               scale_color_manual(values = c("black", "black")),
+               theme(legend.position="none",axis.title = element_text(size = 10),
+                     axis.text = element_text(size = 10, color = 'black'),
+                     plot.margin = margin(0.5, 0.5, 0.5, 0.5, "cm")))
+
+yhdens.a <- list(theme_classic(),
+               ylab('Number of pastures'),
+               scale_x_continuous(expand = c(0,0)),
+               scale_y_continuous(expand = c(0,0)),
+               scale_fill_manual(values = c("white", "#FFD966")),
+               scale_color_manual(values = c("black", "black")),
+               theme(legend.position="none",axis.title = element_text(size = 10),
+                     axis.text = element_text(size = 10, color = 'black'),
+                     plot.margin = margin(0.5, 0.5, 0.5, 0.5, "cm")))
+
+rbsdens.a <- list(theme_classic(),
+                ylab('Number of pastures'),
+                scale_x_continuous(expand = c(0,0)),
+                scale_y_continuous(expand = c(0,0)),
+                scale_fill_manual(values = c("white", "#C00000")),
+                scale_color_manual(values = c("black", "black")),
+                theme(legend.position="none",axis.title = element_text(size = 10),
+                      axis.text = element_text(size = 10, color = 'black'),
+                      plot.margin = margin(0.5, 0.5, 0.5, 0.5, "cm")))
+# area size
+png("rbs_areasize.png", units="cm", width=7.75, height=5.64, res=600)
+ggplot(rbsobs_f, aes(areaha, fill = rbs_occ, color = rbs_occ)) + 
+  geom_histogram(position = "stack", alpha = 0.8, bins = 6) +
+  areax +
+  rbsdens 
+dev.off()
+
+png("yh_areasize.png", units="cm", width=7.75, height=5.64, res=600)
+ggplot(yhobs_f, aes(areaha, fill = yh_occ, color = yh_occ)) + 
+  areax +
+  geom_histogram(position = "stack", alpha = 0.8, bins = 6) +
+  yhdens
+dev.off()
+
+#edges 
+png("rbs_edges.png", units="cm", width=7.75, height=5.64, res=600)
+ggplot(rbsobs_f, aes(edges, fill = rbs_occ, color = rbs_occ)) + 
+  geom_histogram(position = "stack", alpha = 0.8, bins = 6) +
+  xlab("Edges") +
+  rbsdens
+dev.off()
+
+png("yh_edges.png", units="cm", width=7.75, height=5.64, res=600)
+ggplot(yhobs_f, aes(edges, fill = yh_occ, color = yh_occ)) + 
+  xlab("Edges") +
+  geom_histogram(position = "stack", alpha = 0.8, bins = 6) +
+  yhdens
+dev.off()
+
+#spruce
+png("rbs_spruce.png", units="cm", width=7.75, height=5.64, res=600)
+ggplot(rbsobs_f, aes(spruce, fill = rbs_occ, color = rbs_occ)) + 
+  geom_histogram(position = "stack", alpha = 0.8, bins = 6) +
+  xlab("Spruce cover (%)") +
+  rbsdens
+dev.off()
+
+png("yh_spruce.png", units="cm", width=7.75, height=5.64, res=600)
+ggplot(yhobs_f, aes(spruce, fill = yh_occ, color = yh_occ)) + 
+  xlab("Spruce cover (%)") +
+  geom_histogram(position = "stack", alpha = 0.8, bins = 6) +
+  yhdens
+dev.off()
+
+#grass
+png("rbs_grass.png", units="cm", width=7.75, height=5.64, res=600)
+ggplot(rbsobs_f, aes(grass, fill = rbs_occ, color = rbs_occ)) + 
+  geom_histogram(position = "stack", alpha = 0.8, bins = 6) +
+  xlab("Grass cover (%)") +
+  rbsdens
+dev.off()
+
+png("yh_grass.png", units="cm", width=7.75, height=5.64, res=600)
+ggplot(yhobs_f, aes(grass, fill = yh_occ, color = yh_occ)) + 
+  xlab("Grass cover (%)") +
+  geom_histogram(position = "stack", alpha = 0.8, bins = 6) +
+  yhdens
+dev.off()
+
+#shrubs
+png("rbs_shrubs.png", units="cm", width=7.75, height=5.64, res=600)
+ggplot(rbsobs_f, aes(shrubs, fill = rbs_occ, color = rbs_occ)) + 
+  geom_histogram(position = "stack", alpha = 0.8, bins = 6) +
+  xlab("Shrub cover (%)") +
+  rbsdens
+dev.off()
+
+png("yh_shrubs.png", units="cm", width=7.75, height=5.64, res=600)
+ggplot(yhobs_f, aes(shrubs, fill = yh_occ, color = yh_occ)) + 
+  xlab("Shrub cover (%)") +
+  geom_histogram(position = "stack", alpha = 0.8, bins = 6) +
+  yhdens
+dev.off()
+#birch
+png("rbs_birch.png", units="cm", width=7.75, height=5.64, res=600)
+ggplot(rbsobs_f, aes(birch, fill = rbs_occ, color = rbs_occ)) + 
+  geom_histogram(position = "stack", alpha = 0.8, bins = 6) +
+  xlab("Birch cover (%)") +
+  rbsdens
+dev.off()
+
+png("yh_birch.png", units="cm", width=7.75, height=5.64, res=600)
+ggplot(yhobs_f, aes(birch, fill = yh_occ, color = yh_occ)) + 
+  xlab("Birch cover (%)") +
+  geom_histogram(position = "stack", alpha = 0.8, bins = 6) +
+  yhdens
+dev.off()
+#raspberry 
+png("rbs_raspberry.png", units="cm", width=7.75, height=5.64, res=600)
+ggplot(rbsobs_f, aes(raspberry, fill = rbs_occ, color = rbs_occ)) + 
+  geom_histogram(position = "stack", alpha = 0.8, bins = 6) +
+  xlab("Raspberry cover (%)") +
+  rbsdens
+dev.off()
+
+png("yh_raspberry.png", units="cm", width=7.75, height=5.64, res=600)
+ggplot(yhobs_f, aes(raspberry, fill = yh_occ, color = yh_occ)) + 
+  xlab("Raspberry cover (%)") +
+  geom_histogram(position = "stack", alpha = 0.8, bins = 6) +
+  yhdens
+dev.off()
+#branches
+png("rbs_branches.png", units="cm", width=7.75, height=5.64, res=600)
+ggplot(rbsobs_f, aes(branches, fill = rbs_occ, color = rbs_occ)) + 
+  geom_histogram(position = "stack", alpha = 0.8, bins = 6) +
+  xlab("Branches cover (%)") +
+  rbsdens
+dev.off()
+
+png("yh_branches.png", units="cm", width=7.75, height=5.64, res=600)
+ggplot(yhobs_f, aes(branches, fill = yh_occ, color = yh_occ)) + 
+  xlab("Branches cover (%)") +
+  geom_histogram(position = "stack", alpha = 0.8, bins = 6) +
+  yhdens
+dev.off()
+#bare
+png("rbs_bare.png", units="cm", width=7.75, height=5.64, res=600)
+ggplot(rbsobs_f, aes(bare, fill = rbs_occ, color = rbs_occ)) + 
+  geom_histogram(position = "stack", alpha = 0.8, bins = 6) +
+  xlab("Bare cover (%)") +
+  rbsdens
+dev.off()
+
+png("yh_bare.png", units="cm", width=7.75, height=5.64, res=600)
+ggplot(yhobs_f, aes(bare, fill = yh_occ, color = yh_occ)) + 
+  xlab("Bare cover (%)") +
+  geom_histogram(position = "stack", alpha = 0.8, bins = 6) +
+  yhdens
+dev.off()
+#stones
+png("rbs_stones.png", units="cm", width=7.75, height=5.64, res=600)
+ggplot(rbsobs_f, aes(stones, fill = rbs_occ, color = rbs_occ)) + 
+  geom_histogram(position = "stack", alpha = 0.8, bins = 3) +
+  xlab("Stones cover (%)") +
+  rbsdens
+dev.off()
+
+png("yh_stones.png", units="cm", width=7.75, height=5.64, res=600)
+ggplot(yhobs_f, aes(stones, fill = yh_occ, color = yh_occ)) + 
+  xlab("Stones cover (%)") +
+  geom_histogram(position = "stack", alpha = 0.8, bins =3) +
+  yhdens
+dev.off()
+#vegheight
+png("rbs_vegheight.png", units="cm", width=7.75, height=5.64, res=600)
+ggplot(rbsobs_f, aes(vegheight, fill = rbs_occ, color = rbs_occ)) + 
+  geom_histogram(position = "stack", alpha = 0.8, bins = 6) +
+  xlab("Vegetation height (m)") +
+  rbsdens
+dev.off()
+
+png("yh_vegheight.png", units="cm", width=7.75, height=5.64, res=600)
+ggplot(yhobs_f, aes(vegheight, fill = yh_occ, color = yh_occ)) + 
+  xlab("Vegetation height (m)") +
+  geom_histogram(position = "stack", alpha = 0.8, bins = 6) +
+  yhdens
+dev.off()
+#distfl10ha
+png("rbs_distfl10ha.png", units="cm", width=7.75, height=5.64, res=600)
+ggplot(rbsobs_f, aes(distfl10ha, fill = rbs_occ, color = rbs_occ)) + 
+  geom_histogram(position = "stack", alpha = 0.8, bins = 6) +
+  xlab("Distance to farmland (m)") +
+  rbsdens
+dev.off()
+
+png("yh_distfl10ha.png", units="cm", width=7.75, height=5.64, res=600)
+ggplot(yhobs_f, aes(distfl10ha, fill = yh_occ, color = yh_occ)) + 
+  xlab("Distance to farmland (m)") +
+  geom_histogram(position = "stack", alpha = 0.8, bins = 6) +
+  yhdens
+dev.off()
+#distcc
+png("rbs_distcc.png", units="cm", width=7.75, height=5.64, res=600)
+ggplot(rbsobs_f, aes(distcc, fill = rbs_occ, color = rbs_occ)) + 
+  geom_histogram(position = "stack", alpha = 0.8, bins = 6) +
+  xlab("Distance to clear-cut (m)") +
+  rbsdens
+dev.off()
+
+png("yh_distcc.png", units="cm", width=7.75, height=5.64, res=600)
+ggplot(yhobs_f, aes(distcc, fill = yh_occ, color = yh_occ)) + 
+  xlab("Distance to clear-cut (m)") +
+  geom_histogram(position = "stack", alpha = 0.8, bins = 6) +
+  yhdens
+dev.off()
+#propfl_250
+png("rbs_propfl_250.png", units="cm", width=7.75, height=5.64, res=600)
+ggplot(rbsobs_f, aes(propfl_250, fill = rbs_occ, color = rbs_occ)) + 
+  geom_histogram(position = "stack", alpha = 0.8, bins = 6) +
+  xlab("Proportion of farmland in 250 m buffer") +
+  rbsdens
+dev.off()
+
+png("yh_propfl_250.png", units="cm", width=7.75, height=5.64, res=600)
+ggplot(yhobs_f, aes(propfl_250, fill = yh_occ, color = yh_occ)) + 
+  xlab("Proportion of farmland in 250 m buffer") +
+  geom_histogram(position = "stack", alpha = 0.8, bins = 6) +
+  yhdens
+dev.off()
+#propcc_250
+png("rbs_propcc_250.png", units="cm", width=7.75, height=5.64, res=600)
+ggplot(rbsobs_f, aes(propcc_250, fill = rbs_occ, color = rbs_occ)) + 
+  geom_histogram(position = "stack", alpha = 0.8, bins = 6) +
+  xlab("Proportion of clear-cuts in 250 m buffer") +
+  rbsdens
+dev.off()
+
+png("yh_propcc_250.png", units="cm", width=7.75, height=5.64, res=600)
+ggplot(yhobs_f, aes(propcc_250, fill = yh_occ, color = yh_occ)) + 
+  xlab("Proportion of clear-cuts in 250 m buffer") +
+  geom_histogram(position = "stack", alpha = 0.8, bins = 6) +
+  yhdens
+dev.off()
+
+ggplot(data = rbsobs_f, aes(x = rbs_occ, y = branches)) + 
+  geom_boxplot(outlier.color = "black") + 
+  theme_classic() + 
+  ylim(0,100)
+
+########## Agriculture
+
+png("arbs_areasize.png", units="cm", width=7.75, height=5.64, res=600)
+ggplot(rbsobs_a, aes(areaha, fill = rbs_occ, color = rbs_occ)) + 
+  geom_histogram(position = "stack", alpha = 0.8, bins = 6) +
+  areax +
+  rbsdens.a 
+dev.off()
+
+png("ayh_areasize.png", units="cm", width=7.75, height=5.64, res=600)
+ggplot(yhobs_a, aes(areaha, fill = yh_occ, color = yh_occ)) + 
+  areax +
+  geom_histogram(position = "stack", alpha = 0.8, bins = 6) +
+  yhdens.a
+dev.off()
+
+#edges 
+png("arbs_edges.png", units="cm", width=7.75, height=5.64, res=600)
+ggplot(rbsobs_a, aes(edges, fill = rbs_occ, color = rbs_occ)) + 
+  geom_histogram(position = "stack", alpha = 0.8, bins = 6) +
+  xlab("Edges") +
+  rbsdens.a
+dev.off()
+
+png("ayh_edges.png", units="cm", width=7.75, height=5.64, res=600)
+ggplot(yhobs_a, aes(edges, fill = yh_occ, color = yh_occ)) + 
+  xlab("Edges") +
+  geom_histogram(position = "stack", alpha = 0.8, bins = 6) +
+  yhdens.a
+dev.off()
+
+#spruce
+png("arbs_spruce.png", units="cm", width=7.75, height=5.64, res=600)
+ggplot(rbsobs_a, aes(spruce, fill = rbs_occ, color = rbs_occ)) + 
+  geom_histogram(position = "stack", alpha = 0.8, bins = 2) +
+  xlab("Spruce cover (%)") +
+  rbsdens.a
+dev.off()
+
+png("ayh_spruce.png", units="cm", width=7.75, height=5.64, res=600)
+ggplot(yhobs_a, aes(spruce, fill = yh_occ, color = yh_occ)) + 
+  xlab("Spruce cover (%)") +
+  geom_histogram(position = "stack", alpha = 0.8, bins = 2) +
+  yhdens.a
+dev.off()
+
+#grass
+png("arbs_grass.png", units="cm", width=7.75, height=5.64, res=600)
+ggplot(rbsobs_a, aes(grass, fill = rbs_occ, color = rbs_occ)) + 
+  geom_histogram(position = "stack", alpha = 0.8, bins = 6) +
+  xlab("Grass cover (%)") +
+  rbsdens.a
+dev.off()
+
+png("ayh_grass.png", units="cm", width=7.75, height=5.64, res=600)
+ggplot(yhobs_a, aes(grass, fill = yh_occ, color = yh_occ)) + 
+  xlab("Grass cover (%)") +
+  geom_histogram(position = "stack", alpha = 0.8, bins = 6) +
+  yhdens.a
+dev.off()
+
+#shrubs
+png("arbs_shrubs.png", units="cm", width=7.75, height=5.64, res=600)
+ggplot(rbsobs_a, aes(shrubs, fill = rbs_occ, color = rbs_occ)) + 
+  geom_histogram(position = "stack", alpha = 0.8, bins = 6) +
+  xlab("Shrub cover (%)") +
+  rbsdens.a
+dev.off()
+
+png("ayh_shrubs.png", units="cm", width=7.75, height=5.64, res=600)
+ggplot(yhobs_a, aes(shrubs, fill = yh_occ, color = yh_occ)) + 
+  xlab("Shrub cover (%)") +
+  geom_histogram(position = "stack", alpha = 0.8, bins = 6) +
+  yhdens.a
+dev.off()
+#birch
+png("arbs_birch.png", units="cm", width=7.75, height=5.64, res=600)
+ggplot(rbsobs_a, aes(birch, fill = rbs_occ, color = rbs_occ)) + 
+  geom_histogram(position = "stack", alpha = 0.8, bins = 6) +
+  xlab("Birch cover (%)") +
+  rbsdens.a
+dev.off()
+
+png("ayh_birch.png", units="cm", width=7.75, height=5.64, res=600)
+ggplot(yhobs_a, aes(birch, fill = yh_occ, color = yh_occ)) + 
+  xlab("Birch cover (%)") +
+  geom_histogram(position = "stack", alpha = 0.8, bins = 6) +
+  yhdens.a
+dev.off()
+#raspberry 
+png("arbs_raspberry.png", units="cm", width=7.75, height=5.64, res=600)
+ggplot(rbsobs_a, aes(raspberry, fill = rbs_occ, color = rbs_occ)) + 
+  geom_histogram(position = "stack", alpha = 0.8, bins = 3) +
+  xlab("Raspberry cover (%)") +
+  rbsdens.a
+dev.off()
+
+png("ayh_raspberry.png", units="cm", width=7.75, height=5.64, res=600)
+ggplot(yhobs_a, aes(raspberry, fill = yh_occ, color = yh_occ)) + 
+  xlab("Raspberry cover (%)") +
+  geom_histogram(position = "stack", alpha = 0.8, bins = 3) +
+  yhdens.a
+dev.off()
+#branches
+png("arbs_branches.png", units="cm", width=7.75, height=5.64, res=600)
+ggplot(rbsobs_a, aes(branches, fill = rbs_occ, color = rbs_occ)) + 
+  geom_histogram(position = "stack", alpha = 0.8, bins = 2) +
+  xlab("Branches cover (%)") +
+  rbsdens.a
+dev.off()
+
+png("ayh_branches.png", units="cm", width=7.75, height=5.64, res=600)
+ggplot(yhobs_a, aes(branches, fill = yh_occ, color = yh_occ)) + 
+  xlab("Branches cover (%)") +
+  geom_histogram(position = "stack", alpha = 0.8, bins = 2) +
+  yhdens.a
+dev.off()
+#bare
+png("arbs_bare.png", units="cm", width=7.75, height=5.64, res=600)
+ggplot(rbsobs_a, aes(bare, fill = rbs_occ, color = rbs_occ)) + 
+  geom_histogram(position = "stack", alpha = 0.8, bins = 2) +
+  xlab("Bare cover (%)") +
+  rbsdens.a
+dev.off()
+
+png("ayh_bare.png", units="cm", width=7.75, height=5.64, res=600)
+ggplot(yhobs_a, aes(bare, fill = yh_occ, color = yh_occ)) + 
+  xlab("Bare cover (%)") +
+  geom_histogram(position = "stack", alpha = 0.8, bins = 2) +
+  yhdens.a
+dev.off()
+#stones
+png("arbs_stones.png", units="cm", width=7.75, height=5.64, res=600)
+ggplot(rbsobs_a, aes(stones, fill = rbs_occ, color = rbs_occ)) + 
+  geom_histogram(position = "stack", alpha = 0.8, bins = 3) +
+  xlab("Stones cover (%)") +
+  rbsdens.a
+dev.off()
+
+png("ayh_stones.png", units="cm", width=7.75, height=5.64, res=600)
+ggplot(yhobs_a, aes(stones, fill = yh_occ, color = yh_occ)) + 
+  xlab("Stones cover (%)") +
+  geom_histogram(position = "stack", alpha = 0.8, bins =3) +
+  yhdens.a
+dev.off()
+#vegheight
+png("arbs_vegheight.png", units="cm", width=7.75, height=5.64, res=600)
+ggplot(rbsobs_a, aes(vegheight, fill = rbs_occ, color = rbs_occ)) + 
+  geom_histogram(position = "stack", alpha = 0.8, bins = 4) +
+  xlab("Vegetation height (m)") +
+  rbsdens.a
+dev.off()
+
+png("ayh_vegheight.png", units="cm", width=7.75, height=5.64, res=600)
+ggplot(yhobs_a, aes(vegheight, fill = yh_occ, color = yh_occ)) + 
+  xlab("Vegetation height (m)") +
+  geom_histogram(position = "stack", alpha = 0.8, bins = 4) +
+  yhdens.a
+dev.off()
+#distfl10ha
+png("arbs_distfl10ha.png", units="cm", width=7.75, height=5.64, res=600)
+ggplot(rbsobs_a, aes(distfl10ha, fill = rbs_occ, color = rbs_occ)) + 
+  geom_histogram(position = "stack", alpha = 0.8, bins = 6) +
+  xlab("Distance to farmland (m)") +
+  rbsdens.a
+dev.off()
+
+png("ayh_distfl10ha.png", units="cm", width=7.75, height=5.64, res=600)
+ggplot(yhobs_a, aes(distfl10ha, fill = yh_occ, color = yh_occ)) + 
+  xlab("Distance to farmland (m)") +
+  geom_histogram(position = "stack", alpha = 0.8, bins = 6) +
+  yhdens.a
+dev.off()
+#distcc
+png("arbs_distcc.png", units="cm", width=7.75, height=5.64, res=600)
+ggplot(rbsobs_a, aes(distcc, fill = rbs_occ, color = rbs_occ)) + 
+  geom_histogram(position = "stack", alpha = 0.8, bins = 6) +
+  xlab("Distance to clear-cut (m)") +
+  rbsdens.a
+dev.off()
+
+png("ayh_distcc.png", units="cm", width=7.75, height=5.64, res=600)
+ggplot(yhobs_a, aes(distcc, fill = yh_occ, color = yh_occ)) + 
+  xlab("Distance to clear-cut (m)") +
+  geom_histogram(position = "stack", alpha = 0.8, bins = 6) +
+  yhdens.a
+dev.off()
+#propfl_250
+png("arbs_propfl_250.png", units="cm", width=7.75, height=5.64, res=600)
+ggplot(rbsobs_a, aes(propfl_250, fill = rbs_occ, color = rbs_occ)) + 
+  geom_histogram(position = "stack", alpha = 0.8, bins = 6) +
+  xlab("Proportion of farmland in 250 m buffer") +
+  rbsdens.a
+dev.off()
+
+png("ayh_propfl_250.png", units="cm", width=7.75, height=5.64, res=600)
+ggplot(yhobs_a, aes(propfl_250, fill = yh_occ, color = yh_occ)) + 
+  xlab("Proportion of farmland in 250 m buffer") +
+  geom_histogram(position = "stack", alpha = 0.8, bins = 6) +
+  yhdens.a
+dev.off()
+#propcc_250
+png("arbs_propcc_250.png", units="cm", width=7.75, height=5.64, res=600)
+ggplot(rbsobs_a, aes(propcc_250, fill = rbs_occ, color = rbs_occ)) + 
+  geom_histogram(position = "stack", alpha = 0.8, bins = 6) +
+  xlab("Proportion of clear-cuts in 250 m buffer") +
+  rbsdens.a
+dev.off()
+
+png("ayh_propcc_250.png", units="cm", width=7.75, height=5.64, res=600)
+ggplot(yhobs_a, aes(propcc_250, fill = yh_occ, color = yh_occ)) + 
+  xlab("Proportion of clear-cuts in 250 m buffer") +
+  geom_histogram(position = "stack", alpha = 0.8, bins = 6) +
+  yhdens.a
+dev.off()
+
+ggplot(data = rbsobs_a, aes(x = rbs_occ, y = branches)) + 
+  geom_boxplot(outlier.color = "black") + 
+  theme_classic() + 
+  ylim(0,100)
 
 

@@ -1,0 +1,27 @@
+ Family: poisson  ( log )
+Formula:          shrikes ~ bare + birch + branches + raspberry
+Zero inflation:           ~areasize + branches
+Dispersion:               ~.
+Data: rbs_rscl_f
+
+     AIC      BIC   logLik deviance df.resid 
+    96.6    118.9    -40.3     80.6      111 
+
+
+Conditional model:
+            Estimate Std. Error z value Pr(>|z|)   
+(Intercept)  -2.3904     0.8126  -2.942  0.00326 **
+bare          2.5881     2.2818   1.134  0.25670   
+birch         3.9856     1.3090   3.045  0.00233 **
+branches      2.8713     1.6738   1.716  0.08626 . 
+raspberry     6.6473     3.7302   1.782  0.07475 . 
+---
+Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1
+
+Zero-inflation model:
+            Estimate Std. Error z value Pr(>|z|)    
+(Intercept)   3.6112     0.9471   3.813 0.000137 ***
+areasize     -9.0752     3.6758  -2.469 0.013553 *  
+branches     -4.9208     2.6688  -1.844 0.065212 .  
+---
+Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1
