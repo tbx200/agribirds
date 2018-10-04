@@ -81,15 +81,8 @@ obs$heightcat <- cut(obs$vegheight,
 ###################
 ## Global labels ## 
 ###################
-#rbsy <- ylab(label = "Red-backed shrikes")
-#yhy <- ylab(label = "Yellowhammers")
-#cnty <- ylab(label = "Count")
-#vhx <- xlab(label = "Vegetation height (m)")
-#cutdx <- xlab(label = "Cutting date")
-#timx <- xlab(label = "Time (HH:MM:SS)")
 areax <- xlab(label = "Clear-cut size (ha)")
-#treex <- xlab(label = "Trees on site?")
-#cdatex <- xlab(label = "Cutting date (year)")
+
 
 # Lists of variables
 varlist <- c("areasize", "edges", "spruce", "grass", "shrubs", "birch", "raspberry", 
@@ -127,31 +120,6 @@ covervars <- c("grass", "spruce", "shrubs", "birch", "raspberry", "branches", "b
 ## Predictor selection ##
 ## Assumptions         ##
 #########################
-
-# check distribution of variables 
-boxplot(obs[,3:4])
-boxplot(obs[,5], xlab = "Date")
-boxplot(obs[,7], xlab = "Areasize")
-boxplot(obs[,8], xlab = "cutting date") 
-boxplot(obs[,11:18])
-boxplot(obs[,21], xlab = "vegheight")
-boxplot(obs[,26], xlab = "edges")
-boxplot(obs[,27:28])
-boxplot(obs[,29:30])
-
-##########
-
-# non normal variables:
-# areasize
-# shrubs
-# birch
-# raspberry
-# branches
-# bare
-# vegheight
-# distfl10ha
-# distcc
-# farmland_250
 
 # check structure of obs dataframe
 str(obs)
@@ -240,17 +208,12 @@ for(i in 1:17){
 rbsf_yr_occ <- as.data.frame(aggregate(as.numeric(rbsobs_f$rbs_occ), list(rbsobs_f$year), mean))
 yhf_yr_occ <- aggregate(as.numeric(yhobs_f$yh_occ), list(yhobs_f$year), mean)
 
-barplot(rbsf_yr_occ$x~rbsf_yr_occ$Group.1)
 ###################
 # preparation for dredge
 # store variable names
-
-
 # check structure of the numerical variables of yhobs and rbsobs
 str(yhobs[,varnames])
 str(rbsobs[,varnames])
-
-# variable selection for rescaling
 
 # create copies for rescaling
 yhobs_rscl <- yhobs
@@ -266,17 +229,6 @@ rbsobs_rscl[,rescalevars] <- apply(rbsobs_rscl[,rescalevars],2,function(col) col
 yhobs_rscl <- as.data.frame(yhobs_rscl)
 rbsobs_rscl <- as.data.frame(rbsobs_rscl)
 
-##### Check differences between farmland and forest
-par(mfrow = c(3,5))
-for(i in varnames){
-  boxplot(yhobs_rscl[,i]~yhobs_rscl$type_lvl1, ylab = i)
-}
-par(mfrow = c(3,5))
-for(i in varnames){
-  boxplot(rbsobs_rscl[,i]~rbsobs_rscl$type_lvl1, ylab = i)
-}
-
-
 ## make separate dataframes for clearcuts and farmland
 yh_rscl_a <- yhobs_rscl[which(yhobs_rscl$type_lvl1 == "agriculture"),]
 yh_rscl_f <- yhobs_rscl[which(yhobs_rscl$type_lvl1 == "forest"),]
@@ -284,13 +236,16 @@ yh_rscl_f <- yhobs_rscl[which(yhobs_rscl$type_lvl1 == "forest"),]
 rbs_rscl_a <- rbsobs_rscl[which(rbsobs_rscl$type_lvl1 == "agriculture"),]
 rbs_rscl_f <- rbsobs_rscl[which(rbsobs_rscl$type_lvl1 == "forest"),]
 
+rbs_rscl_f <- rbs_rscl_f[,-7 ]
+rbs_rscl_f <- rbs_rscl_f[,-26]
+yh_rscl_f <- yh_rscl_f[,-7]
+yh_rscl_f <- yh_rscl_f[,-26]
 ## checking for zero inflation
 
 zero.test(yh_rscl_f$yellowhammers)
 zero.test(rbs_rscl_f$shrikes)
 zero.test(yh_rscl_a$yellowhammers)
 zero.test(rbs_rscl_a$shrikes)
-
 
 ### SUBSETTING BASED ON CORRELATION ###
 #######################################
@@ -316,6 +271,7 @@ sexpr_a <-parse(text = paste("!(", paste("(",
                                        varnames[col(subred_a)[i]], " && ",
                                        varnames[row(subred_a)[i]], ")",
                                        sep = "", collapse = " || "), ")"))
+
 ####
 # Create logical matrix for FOREST
 smat_rscl_f <- outer(1:length(varnames), 1:length(varnames), vCorrelated, data = yh_rscl_f[,varnames])
@@ -330,10 +286,6 @@ sexpr_f <-parse(text = paste("!(", paste("(",
                                          varnames[col(subred_a)[i]], " && ",
                                          varnames[row(subred_a)[i]], ")",
                                          sep = "", collapse = " || "), ")"))
-
-# replace numerical type1 variable with factorial
-# sexpr1 <- parse(text = paste("!((grass && spruce) || (grass && birch) || (grass && vegheight) || (grass && farmland_250) || (spruce && vegheight) || (edges && clearcuts250) || (distfl10ha && farmland_250) || (distcc && clearcuts250))"))
-# sexpr2 <-  parse(text = paste("!( (type_lvl1 && grass) || (type_lvl1 && spruce) || (type_lvl1 && birch) || (type_lvl1 && farmland_250) || (grass && spruce) || (grass && birch) || (grass && vegheight) || (grass && farmland_250) || (spruce && vegheight) || (edges && clearcuts250) || (distfl10ha && farmland_250) || (distcc && clearcuts250) )"))
 
 ###########################
 ### Yellowhammer forest ###
@@ -375,7 +327,6 @@ bm.YHab.f<-get.models(ms.YHab.f,delta==0)[[1]]
 summary(bm.YHab.f)
 capture.output(YHabsummary.f,file = "bmYHab_f_output.txt")
 
-
 ### glmmTMB for full model ###
 # with landscape proportions
 YHf.zinull <- glmmTMB(yellowhammers ~ areasize + bare + propfl_250 + spruce + areasize:propfl_250, 
@@ -384,62 +335,10 @@ YHf.zinull <- glmmTMB(yellowhammers ~ areasize + bare + propfl_250 + spruce + ar
                       ziformula = ~ areasize + propfl_250 + spruce + areasize:propfl_250,
                       dispformula = ~ .)
 
-
-#ms.YHzi.f <- dredge(YHf.zinull, trace = 1)
-#bm.YHzi.f<-get.models(ms.YHzi.f,delta==0)[[1]]
-
 YHf.simOutput <- simulateResiduals(fittedModel = YHf.zinull, n = 250)
 testUniformity(simulationOutput = YHf.simOutput)
 testDispersion(simulationOutput = YHf.simOutput)
 testZeroInflation(simulationOutput = YHf.simOutput)
-
-
-YHf.glm.noint <- glm(yellowhammers ~ propfl_250 + areasize + spruce + bare, 
-               family = poisson(),
-               data = yh_rscl_f)
-YHf.glm <- glm(yellowhammers ~ propfl_250 * areasize + spruce + bare, 
-               family = poisson(),
-               data = yh_rscl_f)
-
-YHf.glm.qp <- glm(yellowhammers ~ propfl_250 * areasize + spruce + bare, 
-               family = quasipoisson(),
-               data = yh_rscl_f)
-YHf.glmer <- glmer(yellowhammers ~ propfl_250 * areasize + spruce + bare + (1|spontaneous), 
-               family = poisson(),
-               data = yh_rscl_f)
-
-YHf.zi.01 <- glmmTMB(yellowhammers ~ areasize + propfl_250 + 
-                    spruce + areasize:propfl_250, 
-                  family = poisson(),
-                  data = yh_rscl_f,
-                  ziformula = ~ spruce,
-                  dispformula = ~ spontaneous)
-
-# best
-YHf.zi.02 <- glmmTMB(yellowhammers ~ propfl_250 * areasize + spruce, 
-                     family = poisson(),
-                     data = yh_rscl_f,
-                     ziformula = ~ .,
-                     dispformula = ~ spontaneous)
-YHf.glm.02 <- glm(yellowhammers ~ propfl_250 * areasize + spruce, 
-               family = poisson(),
-               data = yh_rscl_f)
-# without interaction in zi
-YHf.zi.03 <- glmmTMB(yellowhammers ~ propfl_250 * areasize + spruce, 
-                     family = poisson(),
-                     data = yh_rscl_f,
-                     ziformula = ~ areasize + spruce,
-                     dispformula = ~ spontaneous)
-
-YHf.spr.glm <- glm(yellowhammers ~ spruce, data = yh_rscl_f, family = 'poisson')
-YHf.are.glm <- glm(yellowhammers ~ areasize, data = yh_rscl_f, family = 'poisson')
-YHf.pfl.glm <- glm(yellowhammers ~ propfl_250, data = yh_rscl_f, family = 'poisson')
-summary(YHf.spr.glm)
-summary(YHf.are.glm)
-summary(YHf.pfl.glm)
-
-# YHf.zi is the best model
-
 
 #########################
 ### Yellowhammer agri ###
@@ -480,6 +379,7 @@ bm.YHab.a<-get.models(ms.YHab.a,delta==0)[[1]]
 YHabsummary.a <- summary(bm.YHab.a)
 capture.output(YHabsummary.a,file = "bmYHab_a_output.txt")
 
+## Robust estimates
 cov.bm.YHa <- vcovHC(bm.YHab.a, type="HC0")
 std.err.YHa <- sqrt(diag(cov.bm.YHa))
 r.est.YH <- cbind(Estimate= coef(bm.YHab.a), "Robust SE" = std.err.YHa,
@@ -488,27 +388,6 @@ r.est.YH <- cbind(Estimate= coef(bm.YHab.a), "Robust SE" = std.err.YHa,
                    UL = coef(bm.YHab.a) + 1.96 * std.err.YHa)
 
 r.est.YH
-
-
-### glmmTMB for full model ###
-YHa.zi <- glmmTMB(form.full.YHab.a, 
-                  family = poisson(),
-                  data = yh_rscl_a,
-                  ziformula = ~ .,
-                  dispformula = ~1)
-# model doesn't fit, need to look at this later..
-
-data.pres <- subset(yh_rscl_a, yellowhammers > 0)
-data.abs <- subset(yh_rscl_a, yellowhammers == 0)
-data.abs <- data.abs[sample(1:nrow(data.abs),nrow(data.pres)),]
-balancedata <- rbind(data.pres,data.abs)
-
-bal.mod <- glmmTMB(yellowhammers ~ areasize + vegheight, 
-                   family = poisson(),
-                   data = balancedata,
-                   ziformula = ~ .,
-                   dispformula = ~ spontaneous)
-bal.glm <- glm(yellowhammers ~ areasize , data = balancedata, family = poisson())
 
 ##################
 ### RBS forest ###
@@ -562,21 +441,14 @@ RBSf.zi <- glmmTMB(shrikes ~ bare + birch + branches + raspberry,
                    ziformula = ~ areasize + branches,
                    dispformula = ~ .)
 
-RBSf.zi2 <- glmmTMB(shrikes ~ bare + birch + branches + raspberry, 
-                       family = poisson(),
-                       data = rbs_rscl_f,
-                       ziformula = ~ branches + areasize,
-                       dispformula = ~ spontaneous)
-
-RBSf.glm <- glm(shrikes ~ branches + birch + propfl_250 + bare, 
-                family = poisson(),
-                data = rbs_rscl_f)
+simo = simulate(RBSf.zi, seed =1)
+simdat = rbs_rscl_f
+simdat$shrikes = simo[[1]]
 
 RBSf.simOutput <- simulateResiduals(fittedModel = RBSf.zi, n = 250)
 testUniformity(simulationOutput = RBSf.simOutput)
 testDispersion(simulationOutput = RBSf.simOutput)
 testZeroInflation(simulationOutput = RBSf.simOutput)
-
 
 ################
 ### RBS agri ###
@@ -617,6 +489,7 @@ bm.RBSab.a<-get.models(ms.RBSab.a,delta==0)[[1]]
 RBSabsummary.a <- summary(bm.RBSab.a)
 capture.output(RBSabsummary.a,file = "bmRBSab_a_output.txt")
 
+## Robust estimates
 cov.bm.RBSa <- vcovHC(bm.RBSab.a, type="HC0")
 std.err.RBSa <- sqrt(diag(cov.bm.RBSa))
 r.est.RBS <- cbind(Estimate= coef(bm.RBSab.a), "Robust SE" = std.err.RBSa,
@@ -625,13 +498,6 @@ r.est.RBS <- cbind(Estimate= coef(bm.RBSab.a), "Robust SE" = std.err.RBSa,
                UL = coef(bm.RBSab.a) + 1.96 * std.err.RBSa)
 
 r.est.RBS
-
-### glmmTMB for full model ###
-RBSa.zi <- glmmTMB(shrikes ~ farmland_250 + spruce + birch, 
-                   family = poisson(),
-                   data = rbs_rscl_a,
-                   ziformula = ~ spruce,
-                   dispformula = ~ spontaneous)
 
 yellowhammers <- as.data.frame(table(yh_rscl_f$yellowhammers))
 
@@ -653,41 +519,7 @@ ggplot(data = shrikes, aes(x = Var1, y = Freq)) +
   theme(axis.title = element_text(size = 25),
         axis.text = element_text(size = 20, color = 'black'))
 
-wilcoxtests <- data.frame
 
-for(i in varnames.s){
-  print(i)
-  print(wilcox.test(yhobs_f[[i]]~yhobs_f$yh_occ, exact=T))
-  print(mean(yhobs_f[which(yhobs_f$yh_occ=="1"),][[i]]))
-  print(sd(yhobs_f[which(yhobs_f$yh_occ=="1"),][[i]]))
-  print(mean(yhobs_f[which(yhobs_f$yh_occ=="0"),][[i]]))
-  print(sd(yhobs_f[which(yhobs_f$yh_occ=="0"),][[i]]))
-}
-
-for(i in varnames.s){
-  print(i)
-  print(wilcox.test(rbsobs_f[[i]]~rbsobs_f$rbs_occ, exact=T))
-  print(mean(rbsobs_f[which(rbsobs_f$rbs_occ=="1"),][[i]]))
-  print(sd(rbsobs_f[which(rbsobs_f$rbs_occ=="1"),][[i]]))
-  print(mean(rbsobs_f[which(rbsobs_f$rbs_occ=="0"),][[i]]))
-  print(sd(rbsobs_f[which(rbsobs_f$rbs_occ=="0"),][[i]]))
-}
-
-for(i in varnames.s){
-  print(i)
-  print(wilcox.test(yhobs_a[[i]]~yhobs_a$yh_occ, exact=T))
-  print(mean(yhobs_a[which(yhobs_a$yh_occ=="1"),][[i]]))
-  print(sd(yhobs_a[which(yhobs_a$yh_occ=="1"),][[i]]))
-  print(mean(yhobs_a[which(yhobs_a$yh_occ=="0"),][[i]]))
-  print(sd(yhobs_a[which(yhobs_a$yh_occ=="0"),][[i]]))
-}
-
-plot(yh_dens ~ areasize, data = yhobs_f)
-plot(yellowhammers ~ areasize, data = yhobs_f)
-summary(lm(yh_dens ~ areasize, data = yhobs_f))
-plot(rbs_dens ~ areasize, data = rbsobs_f)
-plot(shrikes ~ areasize, data = rbsobs_f)
-summary(lm(rbs_dens~ areasize, data = rbsobs_f))
 
 rbsobs_f$rbs_occ <- as.factor(rbsobs_f$rbs_occ)
 yhobs_f$yh_occ <- as.factor(yhobs_f$yh_occ)
@@ -699,6 +531,7 @@ yhobs_a$yh_occ <- as.factor(yhobs_a$yh_occ)
 yhobs_a$areaha <- yhobs_a$areasize/10000
 rbsobs_a$areaha <- rbsobs_a$areasize/10000
 
+## Lists for ggplot layout of graphs
 yhdens <- list(theme_classic(),
   ylab('Number of clear-cuts'),
   scale_x_continuous(expand = c(0,0)),
@@ -738,6 +571,10 @@ rbsdens.a <- list(theme_classic(),
                 theme(legend.position="none",axis.title = element_text(size = 10),
                       axis.text = element_text(size = 10, color = 'black'),
                       plot.margin = margin(0.5, 0.5, 0.5, 0.5, "cm")))
+
+### Graphs for forest distribution of data
+##########################################
+
 # area size
 png("rbs_areasize.png", units="cm", width=7.75, height=5.64, res=600)
 ggplot(rbsobs_f, aes(areaha, fill = rbs_occ, color = rbs_occ)) + 
@@ -959,17 +796,19 @@ ggplot(data = rbsobs_f, aes(x = rbs_occ, y = branches)) +
   ylim(0,100)
 
 ########## Agriculture
+##########################
 
+# Areasize
 png("arbs_areasize.png", units="cm", width=7.75, height=5.64, res=600)
 ggplot(rbsobs_a, aes(areaha, fill = rbs_occ, color = rbs_occ)) + 
   geom_histogram(position = "stack", alpha = 0.8, bins = 6) +
-  areax +
+  xlab("Field size (ha)") +
   rbsdens.a 
 dev.off()
 
 png("ayh_areasize.png", units="cm", width=7.75, height=5.64, res=600)
 ggplot(yhobs_a, aes(areaha, fill = yh_occ, color = yh_occ)) + 
-  areax +
+  xlab("Field size (ha)") +
   geom_histogram(position = "stack", alpha = 0.8, bins = 6) +
   yhdens.a
 dev.off()
@@ -1173,10 +1012,4 @@ ggplot(yhobs_a, aes(propcc_250, fill = yh_occ, color = yh_occ)) +
   geom_histogram(position = "stack", alpha = 0.8, bins = 6) +
   yhdens.a
 dev.off()
-
-ggplot(data = rbsobs_a, aes(x = rbs_occ, y = branches)) + 
-  geom_boxplot(outlier.color = "black") + 
-  theme_classic() + 
-  ylim(0,100)
-
 
