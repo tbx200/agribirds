@@ -4,7 +4,7 @@
 install.packages(c("ggplot2", "tidyverse", "tibble", "lubridate", 
                    "lme4", "sparklyr", "reshape2", "Hmisc", "car", 
                    "MuMIn", "glmmTMB", "matrixStats", "hexbin", "DHARMa",
-                   "sandwich", "sjstats", "pscl"))
+                   "sandwich", "sjstats", "pscl", "Boruta"))
                  
 # tidyverse
 library(tidyverse)
@@ -19,6 +19,7 @@ library(vcdExtra)
 library(sandwich)
 library(sjstats)
 library(pscl)
+library(Boruta)
 
 # data management
 library(lubridate)
@@ -75,40 +76,17 @@ obs$rbs_occ <- as.numeric(ifelse(obs$shrikes > 0,
                                      c("1"), 
                                      c("0")))
 
-obs$heightcat <- cut(obs$vegheight,
-                                     breaks = c(0,1,2,3,4,5,Inf),
-                                     labels = c("0-1","1-2","2-3","3-4","4-5",">5"),
-                                     right = FALSE)
 
 str(obs)
 obs$farmland_250 <- as.numeric(obs$farmland_250) 
 obs$clearcuts250 <- as.numeric(obs$clearcuts250)
 obs$type1_num <- as.numeric(factor(obs$type_lvl1))
-obs$year <- year(obs$cuttingdate)
 
 # select only the variables that will be used in the Yellowhammer model
-yhobs <- obs[,c(1,2,3,5,6,7,8,9,11,12,13,14,15,16,17,18,19,20,21,26,27,28,31,32,33,36,37)]
-yhobs$yh_dens <- ((yhobs$yellowhammers / yhobs$areasize) * 10000)
+yhobs <- obs[,c(1,2,3,5,6,7,8,9,11,12,13,14,15,16,17,18,19,20,21,26,27,28,31,32,33,35)]
 
 # select only the variables that will be used in the Red-backed shrike model
-rbsobs <- obs[,c(1,2,4,5,6,7,8,9,11,12,13,14,15,16,17,18,19,20,21,26,27,28,31,32,34,36,37)]
-rbsobs$rbs_dens <- ((rbsobs$shrikes / rbsobs$areasize) * 10000)
-
-yhobs_f <- yhobs[which(yhobs$type_lvl1 == "forest"),]
-YH_fp <- yhobs_f[which(yhobs_f$yh_occ=="1"),]
-YH_fa <-  yhobs_f[which(yhobs_f$yh_occ=="0"),]
-
-yhobs_a <- yhobs[which(yhobs$type_lvl1 == "agriculture"),]
-YH_ap <- yhobs_a[which(yhobs_a$yh_occ=="1"),]
-YH_aa <-  yhobs_a[which(yhobs_a$yh_occ=="0"),]
-
-rbsobs_f <- rbsobs[which(rbsobs$type_lvl1 == "forest"),]
-RBS_fp <- rbsobs_f[which(rbsobs_f$rbs_occ=="1"),]
-RBS_fa <-  rbsobs_f[which(rbsobs_f$rbs_occ=="0"),]
-
-rbsobs_a <- rbsobs[which(rbsobs$type_lvl1 == "agriculture"),]
-RBS_ap <- rbsobs_a[which(rbsobs_a$rbs_occ=="1"),]
-RBS_aa <-  rbsobs_a[which(rbsobs_a$rbs_occ=="0"),]
+rbsobs <- obs[,c(1,2,4,5,6,7,8,9,11,12,13,14,15,16,17,18,19,20,21,26,27,28,31,32,34,35)]
 
 ###################
 ## Global labels ## 
@@ -118,27 +96,14 @@ areax <- xlab(label = "Clear-cut size (ha)")
 ####################
 # Lists of variables
 ####################
-varlist <- c("areasize", "edges", "spruce", "grass", "shrubs", "birch", "raspberry", 
-             "branches", "bare", "stones", "trees", "stubs", "vegheight", "distfl10ha",
-             "distcc", "propfl_250", "propcc_250")
-varlist2 <- c("areasize", "edges", "spruce", "grass", "shrubs", "birch", "raspberry", 
-              "branches", "bare", "stones", "vegheight", "distfl10ha",
-              "distcc", "propfl_250", "propcc_250")
-varlist3 <- c("yellowhammers","areasize", "edges", "spruce", "grass", "shrubs", "birch", "raspberry", 
-              "branches", "bare", "stones", "vegheight", "distfl10ha",
-              "distcc","propfl_250", "propcc_250")
-varlist4 <- c("shrikes","areasize", "edges", "spruce", "grass", "shrubs", "birch", "raspberry", 
-              "branches", "bare", "stones", "vegheight", "distfl10ha",
-              "distcc", "propfl_250", "propcc_250")
 
 # numerical variables for colinnearity analysis
 varnames <- c("areasize", "grass", "spruce", "shrubs","birch", "raspberry", "branches", "bare", 
               "vegheight", "edges", "distfl10ha", "distcc", "propfl_250", "propcc_250")
-varnames.s <- c("areasize", "grass", "spruce", "shrubs","birch", "raspberry", "branches", "bare", 
-                "stones", "vegheight", "edges", "distfl10ha", "distcc", "propfl_250", "propcc_250")
+
 # all variables for the model
 varnames.f <- c("areasize", "grass", "spruce", "shrubs", "birch", "raspberry", "branches", "bare", 
-               "vegheight", "edges", "trees", "stubs", "distfl10ha", "distcc", "propfl_250", "propcc_250",
+               "vegheight", "trees", "stubs", "distfl10ha", "distcc", "propfl_250", "propcc_250",
                "areasize*propfl_250", "areasize*propcc_250", "areasize*distcc", "areasize*distfl10ha", 
                "areasize*vegheight")
 varnames.a <- c("areasize", "grass", "spruce", "shrubs", "birch", "raspberry", "branches", "bare", 
@@ -149,67 +114,9 @@ rescalevars <- c("areasize","vegheight", "edges", "distfl10ha", "distcc")
 covervars <- c("grass", "spruce", "shrubs", "birch", "raspberry", "branches", "bare", "stones")
 
 
-########################
-#### Simplenumbers #####
-########################
-simplenumbers <- NULL
-simplenumbers_yfp <- data.frame(colMeans(YH_fp[,varlist2]))
-simplenumbers_yfa <- data.frame(colMeans(YH_fa[,varlist2]))
-simplenumbers_yap <- data.frame(colMeans(YH_ap[,varlist2]))
-simplenumbers_yaa <- data.frame(colMeans(YH_aa[,varlist2]))
-
-simplenumbers_rfp <- data.frame(colMeans(RBS_fp[,varlist2]))
-simplenumbers_rfa <- data.frame(colMeans(RBS_fa[,varlist2]))
-simplenumbers_rap <- data.frame(colMeans(RBS_ap[,varlist2]))
-simplenumbers_raa <- data.frame(colMeans(RBS_aa[,varlist2]))
-
-simplenumbers_yfp$sd <- colSds(as.matrix(YH_fp[,varlist2]))
-simplenumbers_yfa$sd <- colSds(as.matrix(YH_fa[,varlist2]))
-simplenumbers_yap$sd <- colSds(as.matrix(YH_ap[,varlist2]))
-simplenumbers_yaa$sd <- colSds(as.matrix(YH_aa[,varlist2]))
-
-simplenumbers_rfp$sd <- colSds(as.matrix(RBS_fp[,varlist2]))
-simplenumbers_rfa$sd <- colSds(as.matrix(RBS_fa[,varlist2]))
-simplenumbers_rap$sd <- colSds(as.matrix(RBS_ap[,varlist2]))
-simplenumbers_raa$sd <- colSds(as.matrix(RBS_aa[,varlist2]))
-
-count(RBS_ap[which(RBS_ap$trees=="yes"),])/length(RBS_ap$trees)
-count(RBS_aa[which(RBS_aa$trees=="yes"),])/length(RBS_aa$trees)
-count(RBS_fp[which(RBS_fp$trees=="yes"),])/length(RBS_fp$trees)
-count(RBS_fa[which(RBS_fa$trees=="yes"),])/length(RBS_fa$trees)
-
-count(YH_ap[which(YH_ap$trees=="yes"),])/length(YH_ap$trees)
-count(YH_aa[which(YH_aa$trees=="yes"),])/length(YH_aa$trees)
-count(YH_fp[which(YH_fp$trees=="yes"),])/length(YH_fp$trees)
-count(YH_fa[which(YH_fa$trees=="yes"),])/length(YH_fa$trees)
-
-count(RBS_ap[which(RBS_ap$stubs=="yes"),])/length(RBS_ap$stubs)
-count(RBS_aa[which(RBS_aa$stubs=="yes"),])/length(RBS_aa$stubs)
-count(RBS_fp[which(RBS_fp$stubs=="yes"),])/length(RBS_fp$stubs)
-count(RBS_fa[which(RBS_fa$stubs=="yes"),])/length(RBS_fa$stubs)
-
-count(YH_ap[which(YH_ap$stubs=="yes"),])/length(YH_ap$stubs)
-count(YH_aa[which(YH_aa$stubs=="yes"),])/length(YH_aa$stubs)
-count(YH_fp[which(YH_fp$stubs=="yes"),])/length(YH_fp$stubs)
-count(YH_fa[which(YH_fa$stubs=="yes"),])/length(YH_fa$stubs)
-
-for(i in 1:17){
-  variable <- varlist[i]
-  mean <- mean(yhobs_f[,variable]) 
-  sd <- sd()
-  simplenumbers <- rbind(simplenumbers, data.frame(variable, mean, sd))
-}
-
-rbsf_yr_occ <- as.data.frame(aggregate(as.numeric(rbsobs_f$rbs_occ), list(rbsobs_f$year), mean))
-yhf_yr_occ <- aggregate(as.numeric(yhobs_f$yh_occ), list(yhobs_f$year), mean)
-
 ##############################
 ### preparation for dredge ###
 ##############################
-# store variable names
-# check structure of the numerical variables of yhobs and rbsobs
-str(yhobs[,varnames])
-str(rbsobs[,varnames])
 
 # create copies for rescaling
 yhobs_rscl <- yhobs
@@ -233,9 +140,7 @@ rbs_rscl_a <- rbsobs_rscl[which(rbsobs_rscl$type_lvl1 == "agriculture"),]
 rbs_rscl_f <- rbsobs_rscl[which(rbsobs_rscl$type_lvl1 == "forest"),]
 
 rbs_rscl_f <- rbs_rscl_f[,-7 ]
-rbs_rscl_f <- rbs_rscl_f[,-26]
 yh_rscl_f <- yh_rscl_f[,-7]
-yh_rscl_f <- yh_rscl_f[,-26]
 ## checking for zero inflation
 
 zero.test(yh_rscl_f$yellowhammers)
@@ -243,6 +148,34 @@ zero.test(rbs_rscl_f$shrikes)
 zero.test(yh_rscl_a$yellowhammers)
 zero.test(rbs_rscl_a$shrikes)
 
+## formula for global model
+form.full.YHf <- formula(paste0('yellowhammers ~ 1 +', paste0(varnames.f, collapse='+')))
+form.full.RBSf <- formula(paste0('shrikes ~ 1 +', paste0(varnames.f, collapse='+')))
+
+## Identify important variables with boruta
+set.seed(123)
+boruta.train.yh <- Boruta(form.full.YHf, data = yh_rscl_f, doTrace = 2)
+boruta.train.rbs <-  Boruta(form.full.RBSf, data = rbs_rscl_f, doTrace = 2)
+
+plot(boruta.train.yh, xlab = "", xaxt = "n")
+lz<-lapply(1:ncol(boruta.train.yh$ImpHistory),function(i) boruta.train.yh$ImpHistory[is.finite(boruta.train.yh$ImpHistory[,i]),i])
+names(lz) <- colnames(boruta.train.yh$ImpHistory)
+Labels <- sort(sapply(lz,median))
+axis(side = 1,las=2,labels = names(Labels),
+       at = 1:ncol(boruta.train.yh$ImpHistory), cex.axis = 0.7)
+
+plot(boruta.train.rbs, xlab = "", xaxt = "n")
+lz<-lapply(1:ncol(boruta.train.rbs$ImpHistory),function(i) boruta.train.rbs$ImpHistory[is.finite(boruta.train.rbs$ImpHistory[,i]),i])
+names(lz) <- colnames(boruta.train.rbs$ImpHistory)
+Labels <- sort(sapply(lz,median))
+axis(side = 1,las=2,labels = names(Labels),
+     at = 1:ncol(boruta.train.rbs$ImpHistory), cex.axis = 0.7)
+
+boruta.yh <- c("areasize", "spruce", "bare", "vegheight", "distfl10ha", "areasize*distfl10ha", "areasize*vegheight")
+boruta.yh.c <- c("areasize", "spruce", "bare", "vegheight", "distfl10ha")
+boruta.rbs <- c("grass", "spruce", "branches", "vegheight", "distfl10ha", "propfl_250", "propcc_250", "areasize*propfl_250", "areasize*propcc_250", 
+                "areasize*distfl10ha", "areasize*vegheight")
+boruta.rbs.c <- c("grass", "spruce", "branches", "vegheight", "distfl10ha", "propfl_250", "propcc_250")
 ### SUBSETTING BASED ON CORRELATION ###
 ### create correlation matrix for weather variables to use in dredge function, cutoff is 0.4, can be changed
 is.correlated <- function(i, j, data, conf.level = .95, cutoff = .4, ...) {
@@ -255,287 +188,79 @@ is.correlated <- function(i, j, data, conf.level = .95, cutoff = .4, ...) {
 vCorrelated <- Vectorize(is.correlated, c("i", "j"))
 ####
 # Create logical matrix for AGRICULTURE
-smat_rscl_a <- outer(1:length(varnames), 1:length(varnames), vCorrelated, data = yh_rscl_a[,varnames])
-nm <- varnames
-dimnames(smat_rscl_a) <- list(nm, nm)
-smat_rscl_a
+smat_rscl_yh <- outer(1:length(boruta.yh.c), 1:length(boruta.yh.c), vCorrelated, data = yh_rscl_a[,boruta.yh.c])
+nm <- boruta.yh.c
+dimnames(smat_rscl_yh) <- list(nm, nm)
+smat_rscl_yh
 
 ## create subsetting rules FOR AGRICULTURE
-subred_a <- smat_rscl_a
-i <- as.vector(subred_a == FALSE & !is.na(subred_a))
-sexpr_a <-parse(text = paste("!(", paste("(",
-                                       varnames[col(subred_a)[i]], " && ",
-                                       varnames[row(subred_a)[i]], ")",
+subred_yh <- smat_rscl_yh
+i <- as.vector(subred_yh == FALSE & !is.na(subred_yh))
+sexpr_yh <-parse(text = paste("!(", paste("(",
+                                       boruta.yh.c[col(subred_yh)[i]], " && ",
+                                       boruta.yh.c[row(subred_yh)[i]], ")",
                                        sep = "", collapse = " || "), ")"))
 
 ####
 # Create logical matrix for FOREST
-smat_rscl_f <- outer(1:length(varnames), 1:length(varnames), vCorrelated, data = yh_rscl_f[,varnames])
-nm <- varnames
-dimnames(smat_rscl_f) <- list(nm, nm)
-smat_rscl_f
+smat_rscl_rbs <- outer(1:length(boruta.rbs.c), 1:length(boruta.rbs.c), vCorrelated, data = yh_rscl_f[,boruta.rbs.c])
+nm <- boruta.rbs.c
+dimnames(smat_rscl_rbs) <- list(nm, nm)
+smat_rscl_rbs
 
 ## create subsetting rules FOR FOREST
-subred_f <- smat_rscl_f
-i <- as.vector(subred_f == FALSE & !is.na(subred_f))
-sexpr_f <-parse(text = paste("!(", paste("(",
-                                         varnames[col(subred_a)[i]], " && ",
-                                         varnames[row(subred_a)[i]], ")",
+subred_rbs <- smat_rscl_rbs
+i <- as.vector(subred_rbs == FALSE & !is.na(subred_rbs))
+sexpr_rbs <-parse(text = paste("!(", paste("(",
+                                         boruta.rbs.c[col(subred_rbs)[i]], " && ",
+                                         boruta.rbs.c[row(subred_rbs)[i]], ")",
                                          sep = "", collapse = " || "), ")"))
 
 ###########################
 ### Yellowhammer forest ###
 ###########################
 
-### dredge Occurrence  ###
-### for zero inflation ###
-form.full.YHoc.f<-formula(paste0('yh_occ ~ 1 +',paste0(varnames.f,collapse='+'))) # can add random effects in the first part of the expression
-# if df.sp is your data frame with response and predictors
+form.bor.YHf <- formula(paste0('yellowhammers ~ 1 +', paste0(boruta.yh, collapse='+')))
+form.bor.RBSf <- formula(paste0('shrikes ~ 1 +', paste0(boruta.rbs, collapse='+')))
+# set options for dredge
 options(na.action = na.fail)
 
-m0.YHoc.f<-glm(form.full.YHoc.f, data=yh_rscl_f, family = binomial())
+m0.YHf <- zeroinfl(form.bor.YHf, data=yh_rscl_f, dist = "poisson", link = "logit" )
 
 ## dredge
-ms.YHoc.f<-dredge(m0.YHoc.f,subset=sexpr_f)
+ms.YHf<-dredge(m0.YHf)#,subset=sexpr_f)
 
-mod.YHoc.f.av<-model.avg(subset(ms.YHoc.f, delta<quantile(ms.YHoc.f$delta,0.05)),fit=TRUE)
+mod.YHf.av<-model.avg(subset(ms.YHf, delta<quantile(ms.YHf$delta,0.05)),fit=TRUE)
 
-bm.YHoc.f<-get.models(ms.YHoc.f,delta==0)[[1]]
+bm.YHf<-get.models(ms.YHf,delta==0)[[1]]
 
-YHocsummary.f <- summary(bm.YHoc.f)
-capture.output(YHocsummary.f,file = "bmYHoc_f_output.csv")
-
-### dredge abundance   ###
-### for conditional fm ###
-
-form.full.YHab.f<-formula(paste0('yellowhammers ~ 1 +',paste0(varnames.f,collapse='+'))) # can add random effects in the first part of the expression
-# if df.sp is your data frame with response and predictors
-options(na.action = na.fail)
-
-m0.YHab.f<-glm(form.full.YHab.f, data=yh_rscl_f, family = poisson())
-m0.YHzip.f <- zeroinfl(yellowhammers ~ areasize+grass+spruce+shrubs+birch+raspberry+branches+bare+vegheight+edges+trees+stubs+distfl10ha+distcc+propfl_250+propcc_250+areasize*propfl_250+areasize*propcc_250+areasize*distcc+areasize*distfl10ha+areasize*vegheight | 
-                         areasize+grass+spruce+shrubs+birch+raspberry+branches+bare+vegheight+edges+trees+stubs+distfl10ha+distcc+propfl_250+propcc_250+areasize*propfl_250+areasize*propcc_250+areasize*distcc+areasize*distfl10ha+areasize*vegheight, 
-                       data = yh_rscl_f, dist = "poisson", link = "logit" )
-
+### Red-backed shrike forest
 ## dredge
-ms.YHab.f<-dredge(m0.YHab.f,subset=sexpr_f)
+m0.RBSf <- zeroinfl(shrikes ~ 1 + grass + spruce + branches + vegheight + distfl10ha + 
+                      propfl_250 + propcc_250 + areasize * propfl_250 + areasize * 
+                      propcc_250 + areasize * distfl10ha + areasize * vegheight, data=rbs_rscl_f, dist = "poisson", link = "logit" )
 
-mod.YHab.f.av<-model.avg(subset(ms.YHab.f, delta<quantile(ms.YHab.f$delta,0.05)),fit=TRUE)
+ms.RBSf<-dredge(m0.RBSf, subset = sexpr_rbs)
 
-bm.YHab.f<-get.models(ms.YHab.f,delta==0)[[1]]
-summary(bm.YHab.f)
-capture.output(YHabsummary.f,file = "bmYHab_f_output.txt")
+mod.RBSf.av<-model.avg(subset(ms.RBSf, delta<quantile(ms.RBSf$delta,0.05)),fit=TRUE)
 
-### glmmTMB for full model ###
-# with landscape proportions
+bm.RBSf<-get.models(ms.RBSf,delta==0)[[1]]
 
-yh_m_f <- yh_rscl_f[,c("yellowhammers", "areasize", "bare", "propfl_250", "spruce")]
 
-YHf.zinull <- glmmTMB(yellowhammers ~ areasize + bare + propfl_250 + spruce + areasize:propfl_250, 
-                      family = poisson(),
-                      data = yh_m_f,
-                      ziformula = ~ areasize + propfl_250 + spruce + areasize:propfl_250,
-                      dispformula = ~ .)
-
-YHf.zip <- zeroinfl(yellowhammers ~ areasize + bare + propfl_250 + spruce + areasize:propfl_250 | areasize + propfl_250 + spruce + areasize:propfl_250, data = yh_m_f, dist = "poisson", link = "logit" )
+YHf.zip <- zeroinfl(yellowhammers ~ areasize + bare + propfl_250 + spruce + areasize:propfl_250 | areasize + propfl_250 + spruce + areasize:propfl_250, data = yh_rscl_f, dist = "poisson", link = "logit" )
 summary(YHf.zip)
-ms.YHf.zip <- dredge(YHf.zip)
-bm.YHf.zip <- get.models(ms.YHf.zip,delta==0)[[1]]
-summary(bm.YHf.zip)
 
-YHf.simOutput <- simulateResiduals(fittedModel = YHf.zinull, n = 250)
-testUniformity(simulationOutput = YHf.simOutput)
-testDispersion(simulationOutput = YHf.simOutput)
-testZeroInflation(simulationOutput = YHf.simOutput)
 
-## Calculate predicted values and residuals
-
-yh_m_f$residuals <- residuals(YHf.zinull)
-yh_m_f$predicted <- predict(YHf.zinull, type = "response")
-
-plot(yh_m_f$yellowhammers, yh_m_f$predicted)
-abline(a=0, b=1)
-plot(yh_m_f$yellowhammers, yh_m_f$residuals)
-
-#########################
-### Yellowhammer agri ###
-#########################
-
-### dredge Occurrence  ###
-### for zero inflation ###
-form.full.YHoc.a <- formula(paste0('yh_occ ~ 1 +',paste0(varnames.a,collapse='+'))) # can add random effects in the first part of the expression
-# if df.sp is your data frame with response and predictors
-options(na.action = na.fail)
-
-m0.YHoc.a<-glm(form.full.YHoc.a, data=yh_rscl_a, family = binomial())
-
-## dredge
-ms.YHoc.a<-dredge(m0.YHoc.a,subset=sexpr_a)
-
-mod.YHoc.a.av<-model.avg(subset(ms.YHoc.a, delta<quantile(ms.YHoc.a$delta,0.05)),fit=TRUE)
-
-bm.YHoc.a<-get.models(ms.YHoc.a,delta==0)[[1]]
-YHocsummary.a <- summary(bm.YHoc.a)
-capture.output(YHocsummary.a,file = "bmYHoc_a_output.txt")
-
-### dredge abundance   ###
-### for conditional fm ###
-
-form.full.YHab.a<-formula(paste0('yellowhammers ~ 1 +',paste0(varnames.a,collapse='+'))) # can add random effects in the first part of the expression
-# if df.sp is your data frame with response and predictors
-options(na.action = na.fail)
-
-m0.YHab.a<-glm(form.full.YHab.a, data=yh_rscl_a, family = poisson())
-
-## dredge
-ms.YHab.a<-dredge(m0.YHab.a,subset=sexpr_a)
-
-mod.YHab.a.av<-model.avg(subset(ms.YHab.a, delta<quantile(ms.YHab.a$delta,0.05)),fit=TRUE)
-
-bm.YHab.a<-get.models(ms.YHab.a,delta==0)[[1]]
-YHabsummary.a <- summary(bm.YHab.a)
-capture.output(YHabsummary.a,file = "bmYHab_a_output.txt")
-
-## Robust estimates
-cov.bm.YHa <- vcovHC(bm.YHab.a, type="HC0")
-std.err.YHa <- sqrt(diag(cov.bm.YHa))
-r.est.YH <- cbind(Estimate= coef(bm.YHab.a), "Robust SE" = std.err.YHa,
-                   "Pr(>|z|)" = 2 * pnorm(abs(coef(bm.YHab.a)/std.err.YHa), lower.tail=FALSE),
-                   LL = coef(bm.YHab.a) - 1.96 * std.err.YHa,
-                   UL = coef(bm.YHab.a) + 1.96 * std.err.YHa)
-
-r.est.YH
 
 ##################
 ### RBS forest ###
 ##################
 
-### dredge Occurrence  ###
-### for zero inflation ###
-form.full.RBSoc.f<-formula(paste0('rbs_occ ~ 1 +',paste0(varnames.f,collapse='+'))) # can add random effects in the first part of the expression
-# if df.sp is your data frame with response and predictors
-options(na.action = na.fail)
-
-m0.RBSoc.f<-glm(form.full.RBSoc.f, data=rbs_rscl_f, family = binomial())
-
-## dredge
-ms.RBSoc.f<-dredge(m0.RBSoc.f,subset=sexpr_f)
-
-mod.RBSoc.f.av<-model.avg(subset(ms.RBSoc.f, delta<quantile(ms.RBSoc.f$delta,0.05)),fit=TRUE)
-
-bm.RBSoc.f<-get.models(ms.RBSoc.f,delta==0)[[1]]
-RBSocsummary.f <- summary(bm.RBSoc.f)
-capture.output(RBSocsummary.f,file = "bmRBSoc_f_output.txt")
-
-### dredge abundance   ###
-### for conditional fm ###
-
-form.full.RBSab.f<-formula(paste0('shrikes ~ 1 +',paste0(varnames.f,collapse='+'))) # can add random effects in the first part of the expression
-# if df.sp is your data frame with response and predictors
-options(na.action = na.fail)
-
-m0.RBSab.f<-glm(form.full.RBSab.f, data=rbs_rscl_f, family = poisson())
-
-## dredge
-ms.RBSab.f<-dredge(m0.RBSab.f,subset=sexpr_f)
-
-mod.RBSab.f.av<-model.avg(subset(ms.RBSab.f, delta<quantile(ms.RBSab.f$delta,0.05)),fit=TRUE)
-
-bm.RBSab.f<-get.models(ms.RBSab.f,delta==0)[[1]]
-RBSabsummary.f <- summary(bm.RBSab.f)
-capture.output(RBSabsummary.f,file = "bmRBSab_f_output.txt")
-
-### glmmTMB for full model ###
-RBSf.zinull <- glmmTMB(shrikes ~ areasize + bare + birch + branches + propfl_250 + raspberry, 
-                       family = poisson(),
-                       data = rbs_rscl_f,
-                       ziformula = ~ areasize + branches + propcc_250 + propfl_250 + shrubs + stubs + areasize:propfl_250,
-                       dispformula = ~ spontaneous)
 
 rbs_m_f <- rbs_rscl_f[,c("shrikes", "bare", "birch", "branches", "raspberry", "areasize")]
 
-RBSf.zi <- glmmTMB(shrikes ~ bare + birch + branches + raspberry, 
-                   family = poisson(),
-                   data = rbs_m_f,
-                   ziformula = ~ areasize + branches,
-                   dispformula = ~ .)
-
 RBSf.zip <- zeroinfl(shrikes ~ bare + birch + branches + raspberry | areasize + branches, data = rbs_m_f, dist = "poisson", link = "logit")
-
-simo = simulate(RBSf.zi, seed =1)
-simdat = rbs_rscl_f
-simdat$shrikes = simo[[1]]
-
-RBSf.simOutput <- simulateResiduals(fittedModel = RBSf.zi, n = 250)
-testUniformity(simulationOutput = RBSf.simOutput)
-testDispersion(simulationOutput = RBSf.simOutput)
-testZeroInflation(simulationOutput = RBSf.simOutput)
-
-rbs_m_f$residuals <- residuals(RBSf.zi)
-rbs_m_f$predicted <- predict(RBSf.zi, type = "response")
-
-plot(rbs_m_f$shrikes, rbs_m_f$predicted, xlim = c(0,5), ylim = c(0,5))
-abline(a = 0, b= 1)
-
-r2(RBSf.zi)
-r2(YHf.zinull)
-
-data(Salamanders)
-m1 <- glmmTMB(count~ mined, 
-              zi=~mined, 
-              family=poisson, data=Salamanders)
-r2(m1)
-
-
-################
-### RBS agri ###
-################
-
-### dredge Occurrence  ###
-### for zero inflation ###
-form.full.RBSoc.a <- formula(paste0('rbs_occ ~ 1 +',paste0(varnames.a,collapse='+'))) # can add random effects in the first part of the expression
-# if df.sp is your data frame with response and predictors
-options(na.action = na.fail)
-
-m0.RBSoc.a<-glm(form.full.RBSoc.a, data=rbs_rscl_a, family = binomial())
-
-## dredge
-ms.RBSoc.a<-dredge(m0.RBSoc.a,subset=sexpr_a)
-
-mod.RBSoc.a.av<-model.avg(subset(ms.RBSoc.a, delta<quantile(ms.RBSoc.a$delta,0.05)),fit=TRUE)
-
-bm.RBSoc.a<-get.models(ms.RBSoc.a,delta==0)[[1]]
-RBSocsummary.a <- summary(bm.RBSoc.a)
-capture.output(RBSocsummary.a,file = "bmRBSoc_a_output.txt")
-
-### dredge abundance   ###
-### for conditional fm ###
-
-form.full.RBSab.a<-formula(paste0('shrikes ~ 1 +',paste0(varnames.a,collapse='+'))) # can add random effects in the first part of the expression
-# if df.sp is your data frame with response and predictors
-options(na.action = na.fail)
-
-m0.RBSab.a<-glm(form.full.RBSab.a, data=rbs_rscl_a, family = poisson())
-
-## dredge
-ms.RBSab.a<-dredge(m0.RBSab.a,subset=sexpr_a)
-
-mod.RBSab.a.av<-model.avg(subset(ms.RBSab.a, delta<quantile(ms.RBSab.a$delta,0.05)),fit=TRUE)
-
-bm.RBSab.a<-get.models(ms.RBSab.a,delta==0)[[1]]
-RBSabsummary.a <- summary(bm.RBSab.a)
-capture.output(RBSabsummary.a,file = "bmRBSab_a_output.txt")
-
-## Robust estimates
-cov.bm.RBSa <- vcovHC(bm.RBSab.a, type="HC0")
-std.err.RBSa <- sqrt(diag(cov.bm.RBSa))
-r.est.RBS <- cbind(Estimate= coef(bm.RBSab.a), "Robust SE" = std.err.RBSa,
-               "Pr(>|z|)" = 2 * pnorm(abs(coef(bm.RBSab.a)/std.err.RBSa), lower.tail=FALSE),
-               LL = coef(bm.RBSab.a) - 1.96 * std.err.RBSa,
-               UL = coef(bm.RBSab.a) + 1.96 * std.err.RBSa)
-
-r.est.RBS
-
+summary(RBSf.zip)
 
 ##############
 ### Graphs ###
