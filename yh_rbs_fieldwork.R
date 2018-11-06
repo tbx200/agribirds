@@ -4,29 +4,32 @@
 install.packages(c("ggplot2", "tidyverse", "tibble", "lubridate", 
                    "lme4", "sparklyr", "reshape2", "Hmisc", "car", 
                    "MuMIn", "glmmTMB", "matrixStats", "hexbin", "DHARMa",
-                   "sandwich"))
-library(lubridate)
-library(tibble)
-library(boot)
-library(ggplot2)
-library(readr)
+                   "sandwich", "sjstats", "pscl"))
+                 
+# tidyverse
+library(tidyverse)
+
+# models
 library(lme4)
-library(sparklyr)
-library(reshape2)
-library(Hmisc)
-library(car)
-library(nlme)
-library(MuMIn)
-library(dplyr)
 library(glmmTMB)
-library(matrixStats)
-library(RColorBrewer)
-library(purrr)
-library(tidyr)
-library(hexbin)
+library(MuMIn)
+library(car)
 library(DHARMa)
 library(vcdExtra)
 library(sandwich)
+library(sjstats)
+library(pscl)
+
+# data management
+library(lubridate)
+library(reshape2)
+library(Hmisc)
+library(matrixStats)
+
+# Plotting
+library(RColorBrewer)
+library(hexbin)
+
 ############
 ## Set WD ##
 ############
@@ -35,7 +38,6 @@ setwd("~/Library/Mobile Documents/com~apple~CloudDocs/Agribirds Sweden iCloud/st
 ##################
 ## Loading data ##
 ##################
-
 obs <- read_delim("YH_RBS_observations.txt", 
                                   "\t", 
                                   escape_double = FALSE, 
@@ -78,13 +80,44 @@ obs$heightcat <- cut(obs$vegheight,
                                      labels = c("0-1","1-2","2-3","3-4","4-5",">5"),
                                      right = FALSE)
 
+str(obs)
+obs$farmland_250 <- as.numeric(obs$farmland_250) 
+obs$clearcuts250 <- as.numeric(obs$clearcuts250)
+obs$type1_num <- as.numeric(factor(obs$type_lvl1))
+obs$year <- year(obs$cuttingdate)
+
+# select only the variables that will be used in the Yellowhammer model
+yhobs <- obs[,c(1,2,3,5,6,7,8,9,11,12,13,14,15,16,17,18,19,20,21,26,27,28,31,32,33,36,37)]
+yhobs$yh_dens <- ((yhobs$yellowhammers / yhobs$areasize) * 10000)
+
+# select only the variables that will be used in the Red-backed shrike model
+rbsobs <- obs[,c(1,2,4,5,6,7,8,9,11,12,13,14,15,16,17,18,19,20,21,26,27,28,31,32,34,36,37)]
+rbsobs$rbs_dens <- ((rbsobs$shrikes / rbsobs$areasize) * 10000)
+
+yhobs_f <- yhobs[which(yhobs$type_lvl1 == "forest"),]
+YH_fp <- yhobs_f[which(yhobs_f$yh_occ=="1"),]
+YH_fa <-  yhobs_f[which(yhobs_f$yh_occ=="0"),]
+
+yhobs_a <- yhobs[which(yhobs$type_lvl1 == "agriculture"),]
+YH_ap <- yhobs_a[which(yhobs_a$yh_occ=="1"),]
+YH_aa <-  yhobs_a[which(yhobs_a$yh_occ=="0"),]
+
+rbsobs_f <- rbsobs[which(rbsobs$type_lvl1 == "forest"),]
+RBS_fp <- rbsobs_f[which(rbsobs_f$rbs_occ=="1"),]
+RBS_fa <-  rbsobs_f[which(rbsobs_f$rbs_occ=="0"),]
+
+rbsobs_a <- rbsobs[which(rbsobs$type_lvl1 == "agriculture"),]
+RBS_ap <- rbsobs_a[which(rbsobs_a$rbs_occ=="1"),]
+RBS_aa <-  rbsobs_a[which(rbsobs_a$rbs_occ=="0"),]
+
 ###################
 ## Global labels ## 
 ###################
 areax <- xlab(label = "Clear-cut size (ha)")
 
-
+####################
 # Lists of variables
+####################
 varlist <- c("areasize", "edges", "spruce", "grass", "shrubs", "birch", "raspberry", 
              "branches", "bare", "stones", "trees", "stubs", "vegheight", "distfl10ha",
              "distcc", "propfl_250", "propcc_250")
@@ -94,7 +127,6 @@ varlist2 <- c("areasize", "edges", "spruce", "grass", "shrubs", "birch", "raspbe
 varlist3 <- c("yellowhammers","areasize", "edges", "spruce", "grass", "shrubs", "birch", "raspberry", 
               "branches", "bare", "stones", "vegheight", "distfl10ha",
               "distcc","propfl_250", "propcc_250")
-
 varlist4 <- c("shrikes","areasize", "edges", "spruce", "grass", "shrubs", "birch", "raspberry", 
               "branches", "bare", "stones", "vegheight", "distfl10ha",
               "distcc", "propfl_250", "propcc_250")
@@ -116,45 +148,8 @@ varnames.a <- c("areasize", "grass", "spruce", "shrubs", "birch", "raspberry", "
 rescalevars <- c("areasize","vegheight", "edges", "distfl10ha", "distcc")
 covervars <- c("grass", "spruce", "shrubs", "birch", "raspberry", "branches", "bare", "stones")
 
-#########################
-## Predictor selection ##
-## Assumptions         ##
-#########################
 
-# check structure of obs dataframe
-str(obs)
-obs$farmland_250 <- as.numeric(obs$farmland_250) 
-obs$clearcuts250 <- as.numeric(obs$clearcuts250)
-obs$type1_num <- as.numeric(factor(obs$type_lvl1))
-obs$year <- year(obs$cuttingdate)
-
-# subset to exclude spontaneous observations
-# obs <- obs[which(obs$spontaneous=="0"),]
-
-# select only the variables that will be used in the Yellowhammer model
-yhobs <- obs[,c(1,2,3,5,6,7,8,9,11,12,13,14,15,16,17,18,19,20,21,26,27,28,31,32,33,36,37)]
-yhobs$yh_dens <- ((yhobs$yellowhammers / yhobs$areasize) * 10000)
-# select only the variables that will be used in the Red-backed shrike model
-rbsobs <- obs[,c(1,2,4,5,6,7,8,9,11,12,13,14,15,16,17,18,19,20,21,26,27,28,31,32,34,36,37)]
-rbsobs$rbs_dens <- ((rbsobs$shrikes / rbsobs$areasize) * 10000)
-
-yhobs_f <- yhobs[which(yhobs$type_lvl1 == "forest"),]
-YH_fp <- yhobs_f[which(yhobs_f$yh_occ=="1"),]
-YH_fa <-  yhobs_f[which(yhobs_f$yh_occ=="0"),]
-
-yhobs_a <- yhobs[which(yhobs$type_lvl1 == "agriculture"),]
-YH_ap <- yhobs_a[which(yhobs_a$yh_occ=="1"),]
-YH_aa <-  yhobs_a[which(yhobs_a$yh_occ=="0"),]
-
-rbsobs_f <- rbsobs[which(rbsobs$type_lvl1 == "forest"),]
-RBS_fp <- rbsobs_f[which(rbsobs_f$rbs_occ=="1"),]
-RBS_fa <-  rbsobs_f[which(rbsobs_f$rbs_occ=="0"),]
-
-rbsobs_a <- rbsobs[which(rbsobs$type_lvl1 == "agriculture"),]
-RBS_ap <- rbsobs_a[which(rbsobs_a$rbs_occ=="1"),]
-RBS_aa <-  rbsobs_a[which(rbsobs_a$rbs_occ=="0"),]
-
-
+########################
 #### Simplenumbers #####
 ########################
 simplenumbers <- NULL
@@ -208,8 +203,9 @@ for(i in 1:17){
 rbsf_yr_occ <- as.data.frame(aggregate(as.numeric(rbsobs_f$rbs_occ), list(rbsobs_f$year), mean))
 yhf_yr_occ <- aggregate(as.numeric(yhobs_f$yh_occ), list(yhobs_f$year), mean)
 
-###################
-# preparation for dredge
+##############################
+### preparation for dredge ###
+##############################
 # store variable names
 # check structure of the numerical variables of yhobs and rbsobs
 str(yhobs[,varnames])
@@ -248,13 +244,13 @@ zero.test(yh_rscl_a$yellowhammers)
 zero.test(rbs_rscl_a$shrikes)
 
 ### SUBSETTING BASED ON CORRELATION ###
-#######################################
 ### create correlation matrix for weather variables to use in dredge function, cutoff is 0.4, can be changed
 is.correlated <- function(i, j, data, conf.level = .95, cutoff = .4, ...) {
   if(j >= i) return(NA)
   ct <- cor.test(data[,i], data[,j], conf.level = conf.level, ...)
   ct$p.value > (1 - conf.level) || abs(ct$estimate) <= cutoff
 }
+
 # Need vectorized function to use with 'outer'
 vCorrelated <- Vectorize(is.correlated, c("i", "j"))
 ####
@@ -305,6 +301,7 @@ ms.YHoc.f<-dredge(m0.YHoc.f,subset=sexpr_f)
 mod.YHoc.f.av<-model.avg(subset(ms.YHoc.f, delta<quantile(ms.YHoc.f$delta,0.05)),fit=TRUE)
 
 bm.YHoc.f<-get.models(ms.YHoc.f,delta==0)[[1]]
+
 YHocsummary.f <- summary(bm.YHoc.f)
 capture.output(YHocsummary.f,file = "bmYHoc_f_output.csv")
 
@@ -316,10 +313,12 @@ form.full.YHab.f<-formula(paste0('yellowhammers ~ 1 +',paste0(varnames.f,collaps
 options(na.action = na.fail)
 
 m0.YHab.f<-glm(form.full.YHab.f, data=yh_rscl_f, family = poisson())
+m0.YHzip.f <- zeroinfl(yellowhammers ~ areasize+grass+spruce+shrubs+birch+raspberry+branches+bare+vegheight+edges+trees+stubs+distfl10ha+distcc+propfl_250+propcc_250+areasize*propfl_250+areasize*propcc_250+areasize*distcc+areasize*distfl10ha+areasize*vegheight | 
+                         areasize+grass+spruce+shrubs+birch+raspberry+branches+bare+vegheight+edges+trees+stubs+distfl10ha+distcc+propfl_250+propcc_250+areasize*propfl_250+areasize*propcc_250+areasize*distcc+areasize*distfl10ha+areasize*vegheight, 
+                       data = yh_rscl_f, dist = "poisson", link = "logit" )
 
 ## dredge
 ms.YHab.f<-dredge(m0.YHab.f,subset=sexpr_f)
-
 
 mod.YHab.f.av<-model.avg(subset(ms.YHab.f, delta<quantile(ms.YHab.f$delta,0.05)),fit=TRUE)
 
@@ -329,16 +328,34 @@ capture.output(YHabsummary.f,file = "bmYHab_f_output.txt")
 
 ### glmmTMB for full model ###
 # with landscape proportions
+
+yh_m_f <- yh_rscl_f[,c("yellowhammers", "areasize", "bare", "propfl_250", "spruce")]
+
 YHf.zinull <- glmmTMB(yellowhammers ~ areasize + bare + propfl_250 + spruce + areasize:propfl_250, 
                       family = poisson(),
-                      data = yh_rscl_f,
+                      data = yh_m_f,
                       ziformula = ~ areasize + propfl_250 + spruce + areasize:propfl_250,
                       dispformula = ~ .)
+
+YHf.zip <- zeroinfl(yellowhammers ~ areasize + bare + propfl_250 + spruce + areasize:propfl_250 | areasize + propfl_250 + spruce + areasize:propfl_250, data = yh_m_f, dist = "poisson", link = "logit" )
+summary(YHf.zip)
+ms.YHf.zip <- dredge(YHf.zip)
+bm.YHf.zip <- get.models(ms.YHf.zip,delta==0)[[1]]
+summary(bm.YHf.zip)
 
 YHf.simOutput <- simulateResiduals(fittedModel = YHf.zinull, n = 250)
 testUniformity(simulationOutput = YHf.simOutput)
 testDispersion(simulationOutput = YHf.simOutput)
 testZeroInflation(simulationOutput = YHf.simOutput)
+
+## Calculate predicted values and residuals
+
+yh_m_f$residuals <- residuals(YHf.zinull)
+yh_m_f$predicted <- predict(YHf.zinull, type = "response")
+
+plot(yh_m_f$yellowhammers, yh_m_f$predicted)
+abline(a=0, b=1)
+plot(yh_m_f$yellowhammers, yh_m_f$residuals)
 
 #########################
 ### Yellowhammer agri ###
@@ -435,11 +452,15 @@ RBSf.zinull <- glmmTMB(shrikes ~ areasize + bare + birch + branches + propfl_250
                        ziformula = ~ areasize + branches + propcc_250 + propfl_250 + shrubs + stubs + areasize:propfl_250,
                        dispformula = ~ spontaneous)
 
+rbs_m_f <- rbs_rscl_f[,c("shrikes", "bare", "birch", "branches", "raspberry", "areasize")]
+
 RBSf.zi <- glmmTMB(shrikes ~ bare + birch + branches + raspberry, 
                    family = poisson(),
-                   data = rbs_rscl_f,
+                   data = rbs_m_f,
                    ziformula = ~ areasize + branches,
                    dispformula = ~ .)
+
+RBSf.zip <- zeroinfl(shrikes ~ bare + birch + branches + raspberry | areasize + branches, data = rbs_m_f, dist = "poisson", link = "logit")
 
 simo = simulate(RBSf.zi, seed =1)
 simdat = rbs_rscl_f
@@ -449,6 +470,22 @@ RBSf.simOutput <- simulateResiduals(fittedModel = RBSf.zi, n = 250)
 testUniformity(simulationOutput = RBSf.simOutput)
 testDispersion(simulationOutput = RBSf.simOutput)
 testZeroInflation(simulationOutput = RBSf.simOutput)
+
+rbs_m_f$residuals <- residuals(RBSf.zi)
+rbs_m_f$predicted <- predict(RBSf.zi, type = "response")
+
+plot(rbs_m_f$shrikes, rbs_m_f$predicted, xlim = c(0,5), ylim = c(0,5))
+abline(a = 0, b= 1)
+
+r2(RBSf.zi)
+r2(YHf.zinull)
+
+data(Salamanders)
+m1 <- glmmTMB(count~ mined, 
+              zi=~mined, 
+              family=poisson, data=Salamanders)
+r2(m1)
+
 
 ################
 ### RBS agri ###
@@ -499,6 +536,11 @@ r.est.RBS <- cbind(Estimate= coef(bm.RBSab.a), "Robust SE" = std.err.RBSa,
 
 r.est.RBS
 
+
+##############
+### Graphs ###
+##############
+
 yellowhammers <- as.data.frame(table(yh_rscl_f$yellowhammers))
 
 ggplot(data = yellowhammers, aes(x = Var1, y = Freq)) +
@@ -518,8 +560,6 @@ ggplot(data = shrikes, aes(x = Var1, y = Freq)) +
   ylab('Number of locations') +
   theme(axis.title = element_text(size = 25),
         axis.text = element_text(size = 20, color = 'black'))
-
-
 
 rbsobs_f$rbs_occ <- as.factor(rbsobs_f$rbs_occ)
 yhobs_f$yh_occ <- as.factor(yhobs_f$yh_occ)
@@ -573,8 +613,6 @@ rbsdens.a <- list(theme_classic(),
                       plot.margin = margin(0.5, 0.5, 0.5, 0.5, "cm")))
 
 ### Graphs for forest distribution of data
-##########################################
-
 # area size
 png("rbs_areasize.png", units="cm", width=7.75, height=5.64, res=600)
 ggplot(rbsobs_f, aes(areaha, fill = rbs_occ, color = rbs_occ)) + 
@@ -796,7 +834,7 @@ ggplot(data = rbsobs_f, aes(x = rbs_occ, y = branches)) +
   ylim(0,100)
 
 ########## Agriculture
-##########################
+
 
 # Areasize
 png("arbs_areasize.png", units="cm", width=7.75, height=5.64, res=600)
@@ -1012,4 +1050,3 @@ ggplot(yhobs_a, aes(propcc_250, fill = yh_occ, color = yh_occ)) +
   geom_histogram(position = "stack", alpha = 0.8, bins = 6) +
   yhdens.a
 dev.off()
-
